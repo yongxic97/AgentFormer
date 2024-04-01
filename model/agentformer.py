@@ -168,7 +168,7 @@ class ContextEncoder(nn.Module):
 
 
 """ Future Encoder """
-class FutureEncoder(nn.Module):
+class FutureEncoder(nn.Module): # approximate posterior
     def __init__(self, cfg, ctx, **kwargs):
         super().__init__()
         self.cfg = cfg
@@ -197,14 +197,25 @@ class FutureEncoder(nn.Module):
         self.tf_decoder = AgentFormerDecoder(decoder_layers, self.nlayer)
 
         self.pos_encoder = PositionalAgentEncoding(self.model_dim, self.dropout, concat=ctx['pos_concat'], max_a_len=ctx['max_agent_len'], use_agent_enc=ctx['use_agent_enc'], agent_enc_learn=ctx['agent_enc_learn'])
-        num_dist_params = 2 * self.nz if self.z_type == 'gaussian' else self.nz     # either gaussian or discrete
+        #TODO: Adapt to beta
+        # num_dist_params = 2 * self.nz if self.z_type == 'gaussian' else self.nz     # either gaussian or discrete
+        if self.z_type == 'gaussian' or self.z_type == 'beta':
+            num_dist_params = 2 * self.nz
+        else:
+            num_dist_params = self.nz
+
         if self.out_mlp_dim is None:
             self.q_z_net = nn.Linear(self.model_dim, num_dist_params)
         else:
             self.out_mlp = MLP(self.model_dim, self.out_mlp_dim, 'relu')
-            self.q_z_net = nn.Linear(self.out_mlp.out_dim, num_dist_params)
+
+            # self.q_z_net = nn.Linear(self.out_mlp.out_dim, num_dist_params)
+            self.q_z_net_param1 = nn.Linear(self.out_mlp.out_dim, self.nz)  # For BetaDist, alpha
+            self.q_z_net_param2 = nn.Linear(self.out_mlp.out_dim, self.nz) # For BetaDist, beta
         # initialize
-        initialize_weights(self.q_z_net.modules())
+        # initialize_weights(self.q_z_net.modules())
+        initialize_weights(self.q_z_net_param1.modules())
+        initialize_weights(self.q_z_net_param2.modules())
 
     def forward(self, data, reparam=True):
         traj_in = []
@@ -247,10 +258,20 @@ class FutureEncoder(nn.Module):
             h = torch.max(tf_out, dim=0)[0]
         if self.out_mlp_dim is not None:
             h = self.out_mlp(h)
-        q_z_params = self.q_z_net(h)
+        # q_z_params = self.q_z_net(h) # This implies mu and var are correlated for Gaussian.
+
         if self.z_type == 'gaussian':
+            q_z_params_mu = self.q_z_net_param1(h)
+            q_z_params_var = self.q_z_net_param2(h)
+            q_z_params = torch.cat([q_z_params_mu, q_z_params_var], dim=-1)
             data['q_z_dist'] = Normal(params=q_z_params)
+        elif self.z_type == 'beta':
+            q_z_params_alpha = F.elu(self.q_z_net_param1(h)) + 2.0
+            q_z_params_beta = F.elu(self.q_z_net_param2(h)) + 2.0
+            q_z_params = torch.cat([q_z_params_alpha, q_z_params_beta], dim=-1)
+            data['q_z_dist'] = Beta(params=q_z_params)
         else:
+            q_z_params = self.q_z_net(h)
             data['q_z_dist'] = Categorical(logits=q_z_params, temp=self.z_tau_annealer.val())
         data['q_z_samp'] = data['q_z_dist'].rsample()
 
@@ -299,9 +320,17 @@ class FutureDecoder(nn.Module):
             self.out_fc = nn.Linear(self.out_mlp.out_dim, forecast_dim)
         initialize_weights(self.out_fc.modules())
         if self.learn_prior:
-            num_dist_params = 2 * self.nz if self.z_type == 'gaussian' else self.nz     # either gaussian or discrete
-            self.p_z_net = nn.Linear(self.model_dim, num_dist_params)
-            initialize_weights(self.p_z_net.modules())
+            # num_dist_params = 2 * self.nz if self.z_type == 'gaussian' else self.nz     # either gaussian or discrete
+            if self.z_type == 'gaussian' or self.z_type == 'beta':
+                num_dist_params = 2 * self.nz
+            else:
+                num_dist_params = self.nz
+            # self.p_z_net = nn.Linear(self.model_dim, num_dist_params)
+            self.p_z_net_param1 = nn.Linear(self.model_dim, self.nz) # alpha or mu
+            self.p_z_net_param2 = nn.Linear(self.model_dim, self.nz) # beta or var
+            # initialize_weights(self.p_z_net.modules())
+            initialize_weights(self.p_z_net_param1.modules())
+            initialize_weights(self.p_z_net_param2.modules())
 
     def decode_traj_ar(self, data, mode, context, pre_motion, pre_vel, pre_motion_scene_norm, z, sample_num, need_weights=False):
         agent_num = data['agent_num']
@@ -402,14 +431,23 @@ class FutureDecoder(nn.Module):
         prior_key = 'p_z_dist' + ('_infer' if mode == 'infer' else '')
         if self.learn_prior:
             h = data['agent_context'].repeat_interleave(sample_num, dim=0)
-            p_z_params = self.p_z_net(h)
+            # p_z_params = self.p_z_net(h)
+            # incompatible with categorical
+            p_z_params_1 = self.p_z_net_param1(h)
+            p_z_params_2 = self.p_z_net_param2(h)
+            p_z_params = torch.cat([p_z_params_1, p_z_params_2], dim=-1)
             if self.z_type == 'gaussian':
                 data[prior_key] = Normal(params=p_z_params)
+            elif self.z_type == 'beta':
+                p_z_params = F.elu(p_z_params) + 2.0
+                data[prior_key] = Beta(params=p_z_params)
             else:
                 data[prior_key] = Categorical(params=p_z_params)
-        else:
+        else: # I don't think this is ever used
             if self.z_type == 'gaussian':
                 data[prior_key] = Normal(mu=torch.zeros(pre_motion.shape[1], self.nz).to(pre_motion.device), logvar=torch.zeros(pre_motion.shape[1], self.nz).to(pre_motion.device))
+            elif self.z_type == 'beta':
+                data[prior_key] = Beta(alpha=torch.ones(pre_motion.shape[1], self.nz).to(pre_motion.device), beta=torch.ones(pre_motion.shape[1], self.nz).to(pre_motion.device))
             else:
                 data[prior_key] = Categorical(logits=torch.zeros(pre_motion.shape[1], self.nz).to(pre_motion.device))
 
@@ -445,7 +483,7 @@ class AgentFormer(nn.Module):
         self.ctx = {
             'tf_cfg': cfg.get('tf_cfg', {}),
             'nz': cfg.nz,
-            'z_type': cfg.get('z_type', 'gaussian'),
+            'z_type': cfg.get('z_type', 'beta'),
             'future_frames': cfg.future_frames,
             'past_frames': cfg.past_frames,
             'motion_dim': cfg.motion_dim,

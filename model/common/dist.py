@@ -68,3 +68,45 @@ class Categorical:
         one_hot = torch.zeros_like(self.probs)
         one_hot.scatter_(1, argmax.unsqueeze(1), 1)
         return one_hot
+
+
+class Beta:
+    
+        def __init__(self, alpha=None, beta=None, params=None):
+            super().__init__()
+            if params is not None:
+                self.alpha, self.beta = torch.chunk(params, chunks=2, dim=-1)
+            else:
+                assert alpha is not None
+                assert beta is not None
+                self.alpha = alpha
+                self.beta = beta
+            self.dist = td.Beta(self.alpha, self.beta)
+    
+        def rsample(self):
+            return self.dist.rsample()
+    
+        def sample(self):
+            return self.dist.sample()
+    
+        def kl(self, p=None):
+            """ compute KL(q||p) """
+            if p is None:
+                p = Beta(alpha=torch.ones_like(self.alpha), beta=torch.ones_like(self.beta))
+            kl = td.kl_divergence(self.dist, p.dist)
+            return kl
+    
+        def mode(self):
+            # if self.alpha.all() > 1 and self.beta.all() > 1:
+            #     return (self.alpha - 1) / (self.alpha + self.beta - 2)
+            # elif self.alpha == 1 and self.beta == 1:
+            #     return 0.5
+            # elif self.alpha <= 1 and self.beta > 1:
+            #     return 0.0
+            # elif self.alpha > 1 and self.beta <= 1:
+            #     return 1.0
+            # else:
+            #     return (0.0,1.0)
+            return (self.alpha - 1) / (self.alpha + self.beta - 2)
+            # return self.alpha / (self.alpha + self.beta)
+ 
