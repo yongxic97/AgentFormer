@@ -176,6 +176,7 @@ class FutureEncoder(nn.Module): # approximate posterior
         self.forecast_dim = forecast_dim = ctx['forecast_dim']
         self.nz = ctx['nz']
         self.z_type = ctx['z_type']
+        print("FutureEncoder in ", self.z_type, " mode.")
         self.z_tau_annealer = ctx.get('z_tau_annealer', None)
         self.model_dim = ctx['tf_model_dim']
         self.ff_dim = ctx['tf_ff_dim']
@@ -273,12 +274,12 @@ class FutureEncoder(nn.Module): # approximate posterior
         else:
             q_z_params = self.q_z_net(h)
             data['q_z_dist'] = Categorical(logits=q_z_params, temp=self.z_tau_annealer.val())
-        data['q_z_samp'] = data['q_z_dist'].rsample()
+        data['q_z_samp'] = data['q_z_dist'].rsample() # This is sampling from approximate posterior
 
 
 """ Future Decoder """
 class FutureDecoder(nn.Module):
-    def __init__(self, cfg, ctx, **kwargs):
+    def __init__(self, cfg, ctx, loss_cfg, **kwargs):
         super().__init__()
         self.cfg = cfg
         self.ar_detach = ctx['ar_detach']
@@ -293,6 +294,7 @@ class FutureDecoder(nn.Module):
         self.past_frames = ctx['past_frames']
         self.nz = ctx['nz']
         self.z_type = ctx['z_type']
+        print("FutureDecoder in ", self.z_type, " mode.")
         self.model_dim = ctx['tf_model_dim']
         self.ff_dim = ctx['tf_ff_dim']
         self.nhead = ctx['tf_nhead']
@@ -302,6 +304,8 @@ class FutureDecoder(nn.Module):
         self.pos_offset = cfg.get('pos_offset', False)
         self.agent_enc_shuffle = ctx['agent_enc_shuffle']
         self.learn_prior = ctx['learn_prior']
+        self.twop = ctx['twop']
+        self.loss_cfg = loss_cfg
         # networks
         in_dim = forecast_dim + len(self.input_type) * forecast_dim + self.nz
         if 'map' in self.input_type:
@@ -332,7 +336,7 @@ class FutureDecoder(nn.Module):
             initialize_weights(self.p_z_net_param1.modules())
             initialize_weights(self.p_z_net_param2.modules())
 
-    def decode_traj_ar(self, data, mode, context, pre_motion, pre_vel, pre_motion_scene_norm, z, sample_num, need_weights=False):
+    def decode_traj_ar(self, data, mode, context, pre_motion, pre_vel, pre_motion_scene_norm, z, sample_num, need_weights=False, gen_pref=-1):
         agent_num = data['agent_num']
         if self.pred_type == 'vel':
             dec_in = pre_vel[[-1]]
@@ -399,24 +403,48 @@ class FutureDecoder(nn.Module):
             dec_in_z = torch.cat([dec_in_z, out_in_z], dim=0)
 
         seq_out = seq_out.view(-1, agent_num * sample_num, seq_out.shape[-1])
-        data[f'{mode}_seq_out'] = seq_out
 
-        if self.pred_type == 'vel':
-            dec_motion = torch.cumsum(seq_out, dim=0)
-            dec_motion += pre_motion[[-1]]
-        elif self.pred_type == 'pos':
-            dec_motion = seq_out.clone()
-        elif self.pred_type == 'scene_norm':
-            dec_motion = seq_out + data['scene_orig']
+        if gen_pref == -1:
+            data[f'{mode}_seq_out'] = seq_out
+
+            if self.pred_type == 'vel':
+                dec_motion = torch.cumsum(seq_out, dim=0)
+                dec_motion += pre_motion[[-1]]
+            elif self.pred_type == 'pos':
+                dec_motion = seq_out.clone()
+            elif self.pred_type == 'scene_norm':
+                dec_motion = seq_out + data['scene_orig']
+            else:
+                dec_motion = seq_out + pre_motion[[-1]]
+
+            dec_motion = dec_motion.transpose(0, 1).contiguous()       # M x frames x 7
+            if mode == 'infer':
+                dec_motion = dec_motion.view(-1, sample_num, *dec_motion.shape[1:])        # M x Samples x frames x 3
+            data[f'{mode}_dec_motion'] = dec_motion
+            if need_weights:
+                data['attn_weights'] = attn_weights
         else:
-            dec_motion = seq_out + pre_motion[[-1]]
+            data['oracle_eval_seq_out'][gen_pref] = seq_out
 
-        dec_motion = dec_motion.transpose(0, 1).contiguous()       # M x frames x 7
-        if mode == 'infer':
-            dec_motion = dec_motion.view(-1, sample_num, *dec_motion.shape[1:])        # M x Samples x frames x 3
-        data[f'{mode}_dec_motion'] = dec_motion
-        if need_weights:
-            data['attn_weights'] = attn_weights
+            if self.pred_type == 'vel':
+                dec_motion = torch.cumsum(seq_out, dim=0)
+                dec_motion += pre_motion[[-1]]
+            elif self.pred_type == 'pos':
+                dec_motion = seq_out.clone()
+            elif self.pred_type == 'scene_norm':
+                dec_motion = seq_out + data['scene_orig']
+            else:
+                dec_motion = seq_out + pre_motion[[-1]]
+
+            dec_motion = dec_motion.transpose(0, 1).contiguous()       # M x frames x 7
+            if mode == 'infer':
+                dec_motion = dec_motion.view(-1, sample_num, *dec_motion.shape[1:])        # M x Samples x frames x 3
+            data['oracle_eval_dec_motion'][gen_pref] = dec_motion
+            if need_weights:
+                data['oracle_eval_attn_weights'][gen_pref] = attn_weights
+            
+            # print("eval dec motion shape: ", dec_motion.shape)
+
 
     def decode_traj_batch(self, data, mode, context, pre_motion, pre_vel, pre_motion_scene_norm, z, sample_num):
         raise NotImplementedError
@@ -459,11 +487,27 @@ class FutureDecoder(nn.Module):
             else:
                 raise ValueError('Unknown Mode!')
 
-        if autoregress:
+        # print("z shape: ", z.shape)
+        if autoregress: # As in traditional Transformer, the decoder always predicts the future frames autoregressively
             self.decode_traj_ar(data, mode, context, pre_motion, pre_vel, pre_motion_scene_norm, z, sample_num, need_weights=need_weights)
         else:
             self.decode_traj_batch(data, mode, context, pre_motion, pre_vel, pre_motion_scene_norm, z, sample_num)
-        
+
+        #########################
+        # Now for clarity of code, we sample extra loss_cfg.op.k samples for twop. I don't think not using the one above would affect much.
+        if self.twop and sample_num==1: # `sample_num=1` is to guarantee that for sampling_loss forward pass, this is not executed.
+            
+            data['oracle_eval_z'] = defaultdict(lambda: None)
+            data['oracle_eval_seq_out'] = defaultdict(lambda: None)
+            data['oracle_eval_dec_motion'] = defaultdict(lambda: None)
+            data['oracle_eval_attn_weights'] = defaultdict(lambda: None)
+
+            for i in range(int(self.loss_cfg['op']['k'])):
+                # print(f"Generating extra samples for twop... Index: {i}")
+                z_twop = data['q_z_dist'].rsample() # at inference time, sample from approximate posterior
+                data['oracle_eval_z'][i] = z_twop
+                self.decode_traj_ar(data, mode, context, pre_motion, pre_vel, pre_motion_scene_norm, z_twop, sample_num, need_weights=need_weights, gen_pref=i)
+        #########################
 
 
 """ AgentFormer """
@@ -506,8 +550,10 @@ class AgentFormer(nn.Module):
             'sn_out_heading': cfg.get('sn_out_heading', False),
             'vel_heading': cfg.get('vel_heading', False),
             'learn_prior': cfg.get('learn_prior', False),
-            'use_map': cfg.get('use_map', False)
+            'use_map': cfg.get('use_map', False),
+            'twop': cfg.get('twop', False),
         }
+        print("AgentFormer in ", self.ctx['z_type'], " mode.")
         self.use_map = self.ctx['use_map']
         self.rand_rot_scene = cfg.get('rand_rot_scene', False)
         self.discrete_rot = cfg.get('discrete_rot', False)
@@ -533,7 +579,7 @@ class AgentFormer(nn.Module):
         # models
         self.context_encoder = ContextEncoder(cfg.context_encoder, self.ctx)
         self.future_encoder = FutureEncoder(cfg.future_encoder, self.ctx)
-        self.future_decoder = FutureDecoder(cfg.future_decoder, self.ctx)
+        self.future_decoder = FutureDecoder(cfg.future_decoder, self.ctx, self.loss_cfg)
         
     def set_device(self, device):
         self.device = device
