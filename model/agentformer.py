@@ -11,6 +11,9 @@ from .map_encoder import MapEncoder
 from utils.torch import *
 from utils.utils import initialize_weights
 
+import csv
+import time
+
 
 def generate_ar_mask(sz, agent_num, agent_mask):
     assert sz % agent_num == 0
@@ -177,6 +180,7 @@ class FutureEncoder(nn.Module): # approximate posterior
         self.nz = ctx['nz']
         self.z_type = ctx['z_type']
         print("FutureEncoder in ", self.z_type, " mode.")
+        self.print_csv = ctx.get('print_csv', False)
         self.z_tau_annealer = ctx.get('z_tau_annealer', None)
         self.model_dim = ctx['tf_model_dim']
         self.ff_dim = ctx['tf_ff_dim']
@@ -198,7 +202,6 @@ class FutureEncoder(nn.Module): # approximate posterior
         self.tf_decoder = AgentFormerDecoder(decoder_layers, self.nlayer)
 
         self.pos_encoder = PositionalAgentEncoding(self.model_dim, self.dropout, concat=ctx['pos_concat'], max_a_len=ctx['max_agent_len'], use_agent_enc=ctx['use_agent_enc'], agent_enc_learn=ctx['agent_enc_learn'])
-        #TODO: Adapt to beta
         # num_dist_params = 2 * self.nz if self.z_type == 'gaussian' else self.nz     # either gaussian or discrete
         if self.z_type == 'gaussian' or self.z_type == 'beta':
             num_dist_params = 2 * self.nz
@@ -217,6 +220,10 @@ class FutureEncoder(nn.Module): # approximate posterior
         # initialize_weights(self.q_z_net.modules())
         initialize_weights(self.q_z_net_param1.modules())
         initialize_weights(self.q_z_net_param2.modules())
+
+        self.csv_timestamp = time.strftime(
+            "-%d_%b_%Y_%H_%M_%S.csv", time.localtime()
+        )
 
     def forward(self, data, reparam=True):
         traj_in = []
@@ -276,6 +283,22 @@ class FutureEncoder(nn.Module): # approximate posterior
             data['q_z_dist'] = Categorical(logits=q_z_params, temp=self.z_tau_annealer.val())
         data['q_z_samp'] = data['q_z_dist'].rsample() # This is sampling from approximate posterior
 
+        if self.print_csv:
+            alpha_np = q_z_params_alpha.detach().cpu().numpy()
+            beta_np = q_z_params_beta.detach().cpu().numpy()
+            with open("./latent/alpha_np_"+self.csv_timestamp, "a", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerows(alpha_np)
+            
+            with open("./latent/beta_np_"+self.csv_timestamp, "a", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerows(beta_np)  
+
+            with open("./latent/sampled_z_prior_"+self.csv_timestamp, "a", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerows(data['q_z_samp'].detach().cpu().numpy())  
+
+
 
 """ Future Decoder """
 class FutureDecoder(nn.Module):
@@ -305,6 +328,7 @@ class FutureDecoder(nn.Module):
         self.agent_enc_shuffle = ctx['agent_enc_shuffle']
         self.learn_prior = ctx['learn_prior']
         self.twop = ctx['twop']
+        self.user_give_z_at_test = ctx['user_give_z_at_test']
         self.loss_cfg = loss_cfg
         # networks
         in_dim = forecast_dim + len(self.input_type) * forecast_dim + self.nz
@@ -479,14 +503,27 @@ class FutureDecoder(nn.Module):
             else:
                 data[prior_key] = Categorical(logits=torch.zeros(pre_motion.shape[1], self.nz).to(pre_motion.device))
 
-        if z is None:
+        if z is None and not self.user_give_z_at_test:
             if mode in {'train', 'recon'}:
                 z = data['q_z_samp'] if mode == 'train' else data['q_z_dist'].mode()
             elif mode == 'infer':
                 z = data['p_z_dist_infer'].sample()
             else:
                 raise ValueError('Unknown Mode!')
-
+        elif z is None and self.user_give_z_at_test:
+            if mode == 'recon':
+                # print("[Future decoder] Using user supplied z at test time.")
+                z = torch.full_like(data['q_z_dist'].mode(), 0.8)
+            elif mode == 'infer':
+                z = data['p_z_dist_infer'].sample()
+                z[:, 0:10] =  0.3    # ADE
+                z[:, 10:20] = 0.1    # FDE
+                # z[:, 12] = 0.1
+                # z[:, 17] = 0.1
+                # z[:,20:] = 0.3
+                # z = torch.full_like(data['p_z_dist_infer'].sample(), 0.9)
+            else:
+                raise ValueError('Unknown Mode!')
         # print("z shape: ", z.shape)
         if autoregress: # As in traditional Transformer, the decoder always predicts the future frames autoregressively
             self.decode_traj_ar(data, mode, context, pre_motion, pre_vel, pre_motion_scene_norm, z, sample_num, need_weights=need_weights)
@@ -552,8 +589,11 @@ class AgentFormer(nn.Module):
             'learn_prior': cfg.get('learn_prior', False),
             'use_map': cfg.get('use_map', False),
             'twop': cfg.get('twop', False),
+            'print_csv': cfg.get('print_csv', False),
+            'user_give_z_at_test': cfg.get('user_give_z_at_test', False),
         }
         print("AgentFormer in ", self.ctx['z_type'], " mode.")
+        if self.ctx['user_give_z_at_test']: print("Using user supplied z at test time.")
         self.use_map = self.ctx['use_map']
         self.rand_rot_scene = cfg.get('rand_rot_scene', False)
         self.discrete_rot = cfg.get('discrete_rot', False)

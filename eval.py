@@ -94,10 +94,12 @@ if __name__ == '__main__':
         for data_file in data_filelist:      # each example e.g., seq_0001 - frame_000009
             # for reconsutrction or deterministic
             if isfile(data_file):
+                # print("using reconstruction")
                 all_traj = np.loadtxt(data_file, delimiter=' ', dtype='float32')        # (frames x agents) x 4
                 all_traj = np.expand_dims(all_traj, axis=0)                             # 1 x (frames x agents) x 4
             # for stochastic with multiple samples
             elif isfolder(data_file):
+                # print("using stochastic samples")
                 sample_list, _ = load_list_from_folder(data_file)
                 sample_all = []
                 for sample in sample_list:

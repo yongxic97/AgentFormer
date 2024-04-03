@@ -72,3 +72,7 @@ decay_gamma: 0.5
 print_freq                   : 20
 model_save_freq              : 10
 
+# ---- Training with oracle preference ----
+twop                         : false
+user_give_z_at_test          : true
+print_csv                    : false

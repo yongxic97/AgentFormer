@@ -133,6 +133,7 @@ if __name__ == '__main__':
             generator = data_generator(cfg, log, split=split, phase='testing')
             save_dir = f'{cfg.result_dir}/epoch_{epoch:04d}/{split}'; mkdir_if_missing(save_dir)
             eval_dir = f'{save_dir}/samples'
+            # eval_dir = f'{save_dir}/recon'
             if not args.cached:
                 test_model(generator, save_dir, cfg)
 
