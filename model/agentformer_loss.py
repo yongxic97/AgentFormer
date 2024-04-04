@@ -76,17 +76,17 @@ def compute_oracle_preference_loss(data, cfg):
     z_tensor = torch.stack((z[0], z[1]))                                    # [z_dim, bs, nz]
     pref_all = torch.stack([pref_ade, pref_fde], dim=0).to(z_tensor.device) # [2, bs]
     # log_z_sm = torch.log(nn.functional.softmax(torch.log(z_tensor), dim=0))
-    # log_z_sm = torch.log(nn.functional.softmax(z_tensor, dim=0))
-    log_z_sm = nn.functional.softmax(z_tensor,dim=0)
+    log_z_sm = torch.log(nn.functional.softmax(z_tensor, dim=0))
+    # log_z_sm = nn.functional.softmax(z_tensor,dim=0)
 
     # In this case, we use two metrics, and z_dim is essentially two as well (for now).
     # Hence, we use dims 0-9 for ADE and 10-19 for FDE for better usage of prefernce.
-    log_z_ade = log_z_sm[:,:,0:10]
-    log_z_fde = log_z_sm[:,:,10:20]
+    log_z_ade = log_z_sm[:,:,0:1]
+    log_z_fde = log_z_sm[:,:,1:2]
 
     bp_loss_ade, bp_loss_fde = 0, 0
 
-    N_times = 10
+    N_times = 1
     for i in range(N_times):
         bp_loss_ade += (torch.sum(log_z_ade[1,:,i] * pref_all[0,:])
                         + torch.sum(log_z_ade[0,:,i] * (1-pref_all[0,:])))
