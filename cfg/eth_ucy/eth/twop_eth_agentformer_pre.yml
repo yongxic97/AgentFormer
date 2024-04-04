@@ -77,5 +77,5 @@ model_save_freq              : 10
 
 # ---- Training with oracle preference ----
 twop                         : true
-user_give_z_at_test          : true
-print_csv                    : false
+user_give_z_at_test          : false
+print_csv                    : true
