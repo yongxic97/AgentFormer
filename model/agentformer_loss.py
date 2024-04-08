@@ -82,7 +82,7 @@ def compute_oracle_preference_loss(data, cfg):
     # In this case, we use two metrics, and z_dim is essentially two as well (for now).
     # Hence, we use dims 0-9 for ADE and 10-19 for FDE for better usage of prefernce.
     log_z_ade = log_z_sm[:,:,0:1]
-    log_z_fde = log_z_sm[:,:,1:2]
+    log_z_fde = log_z_sm[:,:,24:25]
 
     bp_loss_ade, bp_loss_fde = 0, 0
 
