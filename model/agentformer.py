@@ -516,8 +516,8 @@ class FutureDecoder(nn.Module):
                 z = torch.full_like(data['q_z_dist'].mode(), 0.8)
             elif mode == 'infer':
                 z = data['p_z_dist_infer'].sample()
-                z[:, 0:10] =  0.3    # ADE
-                z[:, 10:20] = 0.1    # FDE
+                z[:, 0:1] =  0.9    # ADE
+                z[:, 24:25] = 0.9    # FDE
                 # z[:, 12] = 0.1
                 # z[:, 17] = 0.1
                 # z[:,20:] = 0.3
