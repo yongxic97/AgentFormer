@@ -108,9 +108,9 @@ class ContextEncoder(nn.Module):
         super().__init__()
         self.cfg = cfg
         self.ctx = ctx
-        self.motion_dim = ctx['motion_dim']
-        self.model_dim = ctx['tf_model_dim']
-        self.ff_dim = ctx['tf_ff_dim']
+        self.motion_dim = ctx['motion_dim']     # 2 if 'pos': [x, y]
+        self.model_dim = ctx['tf_model_dim']    # `tf_model_dim` (256)
+        self.ff_dim = ctx['tf_ff_dim']          # `tf_ff_dim` (512)
         self.nhead = ctx['tf_nhead']
         self.dropout = ctx['tf_dropout']
         self.nlayer = cfg.get('nlayer', 6)
@@ -120,6 +120,7 @@ class ContextEncoder(nn.Module):
         self.vel_heading = ctx['vel_heading']
         ctx['context_dim'] = self.model_dim
         in_dim = self.motion_dim * len(self.input_type)
+
         if 'map' in self.input_type:
             in_dim += ctx['map_enc_dim'] - self.motion_dim
         self.input_fc = nn.Linear(in_dim, self.model_dim)
@@ -513,14 +514,15 @@ class FutureDecoder(nn.Module):
         elif z is None and self.user_give_z_at_test:
             if mode == 'recon':
                 # print("[Future decoder] Using user supplied z at test time.")
-                z = torch.full_like(data['q_z_dist'].mode(), 0.8)
+                # z = torch.full_like(data['q_z_dist'].mode(), 0.8)
+                z = data['q_z_dist'].mode()
             elif mode == 'infer':
                 z = data['p_z_dist_infer'].sample()
                 z[:, 0:1] =  0.9    # ADE
                 z[:, 24:25] = 0.9    # FDE
                 # z[:, 12] = 0.1
                 # z[:, 17] = 0.1
-                # z[:,20:] = 0.3
+                # z[:,20:] = 0.4
                 # z = torch.full_like(data['p_z_dist_infer'].sample(), 0.9)
             else:
                 raise ValueError('Unknown Mode!')
