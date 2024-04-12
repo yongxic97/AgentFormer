@@ -40,7 +40,15 @@ def train(epoch):
             seq, frame = data['seq'], data['frame']
             model.set_data(data)
             model_data = model()
-            total_loss, loss_dict, loss_unweighted_dict = model.compute_loss()
+
+            if not cfg.pretrain:
+                total_loss, loss_dict, loss_unweighted_dict = model.compute_loss()
+            else:
+                if epoch <= cfg.add_loss_eps:
+                    total_loss, loss_dict, loss_unweighted_dict = model.compute_original_loss()
+                else:
+                    total_loss, loss_dict, loss_unweighted_dict = model.compute_loss()
+                    
             """ optimize """
             optimizer.zero_grad()
             total_loss.backward()

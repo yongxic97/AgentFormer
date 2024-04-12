@@ -595,6 +595,7 @@ class AgentFormer(nn.Module):
             'learn_prior': cfg.get('learn_prior', False),
             'use_map': cfg.get('use_map', False),
             'twop': cfg.get('twop', False),
+            'twop_sample_z': cfg.get('twop_sample_z', False),
             'print_csv': cfg.get('print_csv', False),
             'user_give_z_at_test': cfg.get('user_give_z_at_test', False),
         }
@@ -736,6 +737,19 @@ class AgentFormer(nn.Module):
             self.future_encoder(self.data)
         self.future_decoder(self.data, mode=mode, sample_num=sample_num, autoregress=True, need_weights=need_weights)
         return self.data[f'{mode}_dec_motion'], self.data
+
+    def compute_original_loss(self):
+        total_loss = 0
+        loss_dict = {}
+        loss_unweighted_dict = {}
+        for loss_name in self.loss_names:
+            if loss_name is 'op':
+                continue
+            loss, loss_unweighted = loss_func[loss_name](self.data, self.loss_cfg[loss_name])
+            total_loss += loss
+            loss_dict[loss_name] = loss.item()
+            loss_unweighted_dict[loss_name] = loss_unweighted.item()
+        return total_loss, loss_dict, loss_unweighted_dict
 
     def compute_loss(self):
         total_loss = 0
