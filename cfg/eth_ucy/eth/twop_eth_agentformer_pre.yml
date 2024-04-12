@@ -82,14 +82,14 @@ lr_scheduler: 'step'
 decay_step: 10
 decay_gamma: 0.5
 print_freq                   : 20
-model_save_freq              : 10
+model_save_freq              : 5
 
 # ---- Training with oracle preference ----
 
 twop                         : true
 twop_sample_z                : false # If false, use the mode for sample generations.
 user_give_z_at_test          : false
-print_csv                    : true
+print_csv                    : false
 
 pretrain                     : false
 add_loss_eps                 : 30 # After how many epochs to add the preference loss
