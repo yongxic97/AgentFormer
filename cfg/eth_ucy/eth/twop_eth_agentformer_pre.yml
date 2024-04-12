@@ -79,3 +79,6 @@ model_save_freq              : 10
 twop                         : true
 user_give_z_at_test          : false
 print_csv                    : true
+
+pretrain                     : true
+add_loss_eps                 : 30 # After how many epochs to add the preference loss
