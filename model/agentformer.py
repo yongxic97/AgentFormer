@@ -210,7 +210,9 @@ class FutureEncoder(nn.Module): # approximate posterior
             num_dist_params = self.nz
 
         if self.out_mlp_dim is None:
-            self.q_z_net = nn.Linear(self.model_dim, num_dist_params)
+            # self.q_z_net = nn.Linear(self.model_dim, num_dist_params)
+            self.q_z_net_param1 = nn.Linear(self.model_dim, self.nz)
+            self.q_z_net_param2 = nn.Linear(self.model_dim, self.nz)
         else:
             self.out_mlp = MLP(self.model_dim, self.out_mlp_dim, 'relu')
 
@@ -740,6 +742,9 @@ class AgentFormer(nn.Module):
         loss_dict = {}
         loss_unweighted_dict = {}
         for loss_name in self.loss_names:
+            if loss_name is 'op':
+                if not self.ctx['twop']:
+                    continue
             loss, loss_unweighted = loss_func[loss_name](self.data, self.loss_cfg[loss_name])
             total_loss += loss
             loss_dict[loss_name] = loss.item()
