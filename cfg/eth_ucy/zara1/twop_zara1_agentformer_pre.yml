@@ -83,9 +83,14 @@ model_save_freq              : 5
 # ---- Training with oracle preference ----
 
 twop                         : true
-twop_sample_z                : false # If false, use the mode for sample generations.
+twop_get_z_strategy          : 'z_re_post_mode'
+#       `z_gt_post_sample`
+#       `z_re_post_sample`
+#       `z_re_post_mean`
+#       `z_re_post_mode`
 user_give_z_at_test          : false
 print_csv                    : false
 
 pretrain                     : false
 add_loss_eps                 : 30 # After how many epochs to add the preference loss
+

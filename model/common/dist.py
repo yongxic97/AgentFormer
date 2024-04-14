@@ -109,4 +109,5 @@ class Beta:
             #     return (0.0,1.0)
             return (self.alpha - 1) / (self.alpha + self.beta - 2)
             # return self.alpha / (self.alpha + self.beta)
- 
+        def mean(self):
+            return self.alpha / (self.alpha + self.beta)

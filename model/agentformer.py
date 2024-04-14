@@ -251,6 +251,7 @@ class FutureEncoder(nn.Module): # approximate posterior
             else:
                 raise ValueError('unknown input_type!')
         traj_in = torch.cat(traj_in, dim=-1)
+        print("original traj_in shape: ", traj_in.shape)
         tf_in = self.input_fc(traj_in.view(-1, traj_in.shape[-1])).view(-1, 1, self.model_dim)
         agent_enc_shuffle = data['agent_enc_shuffle'] if self.agent_enc_shuffle else None
         tf_in_pos = self.pos_encoder(tf_in, num_a=data['agent_num'], agent_enc_shuffle=agent_enc_shuffle)
@@ -305,7 +306,7 @@ class FutureEncoder(nn.Module): # approximate posterior
 
 """ Future Decoder """
 class FutureDecoder(nn.Module):
-    def __init__(self, cfg, ctx, loss_cfg, **kwargs):
+    def __init__(self, cfg, ctx, loss_cfg, future_encoder, **kwargs):
         super().__init__()
         self.cfg = cfg
         self.ar_detach = ctx['ar_detach']
@@ -333,6 +334,7 @@ class FutureDecoder(nn.Module):
         self.twop = ctx['twop']
         self.user_give_z_at_test = ctx['user_give_z_at_test']
         self.loss_cfg = loss_cfg
+        self.twop_get_z_strategy = ctx['twop_get_z_strategy']
         # networks
         in_dim = forecast_dim + len(self.input_type) * forecast_dim + self.nz
         if 'map' in self.input_type:
@@ -362,7 +364,58 @@ class FutureDecoder(nn.Module):
             # initialize_weights(self.p_z_net.modules())
             initialize_weights(self.p_z_net_param1.modules())
             initialize_weights(self.p_z_net_param2.modules())
+        self.copy_future_encoder = future_encoder
 
+    def regen_posterior(self, data, pred_vel, pred_sn):
+        traj_in = []
+        for key in ['vel', 'scene_norm']:
+            if key == 'vel':
+                vel = pred_vel
+                # if self.vel_heading:
+                #     vel = rotation_2d_torch(vel, -data['heading'])[0]
+                traj_in.append(vel)
+            elif key == 'scene_norm':
+                traj_in.append(pred_sn)
+            else:
+                raise ValueError('unknown input_type!')
+        traj_in = torch.cat(traj_in, dim=-1)
+        print("regenerated traj_in shape: ", traj_in.shape)
+        tf_in = self.copy_future_encoder.input_fc(traj_in.view(-1, traj_in.shape[-1])).view(-1, 1, self.copy_future_encoder.model_dim)
+        agent_enc_shuffle = data['agent_enc_shuffle'] if self.copy_future_encoder.agent_enc_shuffle else None
+        tf_in_pos = self.copy_future_encoder.pos_encoder(tf_in, num_a=data['agent_num'], agent_enc_shuffle=agent_enc_shuffle)
+
+        mem_agent_mask = data['agent_mask'].clone()
+        tgt_agent_mask = data['agent_mask'].clone()
+        mem_mask = generate_mask(tf_in.shape[0], data['context_enc'].shape[0], data['agent_num'], mem_agent_mask).to(tf_in.device)
+        tgt_mask = generate_mask(tf_in.shape[0], tf_in.shape[0], data['agent_num'], tgt_agent_mask).to(tf_in.device)
+        
+        tf_out, _ = self.copy_future_encoder.tf_decoder(tf_in_pos, data['context_enc'], memory_mask=mem_mask, tgt_mask=tgt_mask, num_agent=data['agent_num'])
+        tf_out = tf_out.view(traj_in.shape[0], -1, self.copy_future_encoder.model_dim)
+
+        if self.copy_future_encoder.pooling == 'mean':
+            h = torch.mean(tf_out, dim=0)
+        else:
+            h = torch.max(tf_out, dim=0)[0]
+        if self.copy_future_encoder.out_mlp_dim is not None:
+            h = self.copy_future_encoder.out_mlp(h)
+        # q_z_params = self.q_z_net(h) # This implies mu and var are correlated for Gaussian.
+
+        if self.copy_future_encoder.z_type == 'gaussian':
+            q_z_params_mu = self.copy_future_encoder.q_z_net_param1(h)
+            q_z_params_var = self.copy_future_encoder.q_z_net_param2(h)
+            q_z_params = torch.cat([q_z_params_mu, q_z_params_var], dim=-1)
+            re_dist = Normal(params=q_z_params)
+        elif self.copy_future_encoder.z_type == 'beta':
+            q_z_params_alpha = F.elu(self.copy_future_encoder.q_z_net_param1(h)) + 2.0
+            q_z_params_beta = F.elu(self.copy_future_encoder.q_z_net_param2(h)) + 2.0
+            q_z_params = torch.cat([q_z_params_alpha, q_z_params_beta], dim=-1)
+            re_dist = Beta(params=q_z_params)
+        else:
+            q_z_params = self.copy_future_encoder.q_z_net(h)
+            re_dist = Categorical(logits=q_z_params, temp=self.copy_future_encoder.z_tau_annealer.val())
+
+        return re_dist
+        
     def decode_traj_ar(self, data, mode, context, pre_motion, pre_vel, pre_motion_scene_norm, z, sample_num, need_weights=False, gen_pref=-1):
         agent_num = data['agent_num']
         if self.pred_type == 'vel':
@@ -450,7 +503,7 @@ class FutureDecoder(nn.Module):
             data[f'{mode}_dec_motion'] = dec_motion
             if need_weights:
                 data['attn_weights'] = attn_weights
-        else:
+        else: # For generating predictions (and maybe new z's) for preference loss purpose.
             data['oracle_eval_seq_out'][gen_pref] = seq_out
 
             if self.pred_type == 'vel':
@@ -472,6 +525,20 @@ class FutureDecoder(nn.Module):
             
             # print("eval dec motion shape: ", dec_motion.shape)
 
+            # re-generate posterior and get z from that.
+            if self.twop_get_z_strategy != 'z_gt_post_sample':
+                pred_vel = torch.cumsum(seq_out, dim=0) + pre_motion[[-1]]
+                pred_sn = seq_out + data['scene_orig']
+
+                z_post_re = self.regen_posterior(data, pred_vel, pred_sn)
+                if self.twop_get_z_strategy == 'z_re_post_sample':
+                    data['oracle_eval_z'][gen_pref] = z_post_re.rsample()
+                elif self.twop_get_z_strategy == 'z_re_post_mode':
+                    data['oracle_eval_z'][gen_pref] = z_post_re.mode()
+                elif self.twop_get_z_strategy == 'z_re_post_mean':
+                    data['oracle_eval_z'][gen_pref] = z_post_re.mean()
+                else:
+                    raise NotImplementedError("[FutureDecoder] Unkonwn twop getting z strategy.")
 
     def decode_traj_batch(self, data, mode, context, pre_motion, pre_vel, pre_motion_scene_norm, z, sample_num):
         raise NotImplementedError
@@ -548,7 +615,8 @@ class FutureDecoder(nn.Module):
             for i in range(int(self.loss_cfg['op']['k'])):
                 # print(f"Generating extra samples for twop... Index: {i}")
                 z_twop = data['q_z_dist'].rsample() # at inference time, sample from approximate posterior
-                data['oracle_eval_z'][i] = z_twop
+                if self.twop_get_z_strategy == 'z_gt_post_sample':
+                    data['oracle_eval_z'][i] = z_twop 
                 self.decode_traj_ar(data, mode, context, pre_motion, pre_vel, pre_motion_scene_norm, z_twop, sample_num, need_weights=need_weights, gen_pref=i)
         #########################
 
@@ -595,7 +663,7 @@ class AgentFormer(nn.Module):
             'learn_prior': cfg.get('learn_prior', False),
             'use_map': cfg.get('use_map', False),
             'twop': cfg.get('twop', False),
-            'twop_sample_z': cfg.get('twop_sample_z', False),
+            'twop_get_z_strategy': cfg.get('twop_get_z_strategy', 'z_gt_post_sample'),
             'print_csv': cfg.get('print_csv', False),
             'user_give_z_at_test': cfg.get('user_give_z_at_test', False),
         }
@@ -626,7 +694,7 @@ class AgentFormer(nn.Module):
         # models
         self.context_encoder = ContextEncoder(cfg.context_encoder, self.ctx)
         self.future_encoder = FutureEncoder(cfg.future_encoder, self.ctx)
-        self.future_decoder = FutureDecoder(cfg.future_decoder, self.ctx, self.loss_cfg)
+        self.future_decoder = FutureDecoder(cfg.future_decoder, self.ctx, self.loss_cfg, self.future_encoder)
         
     def set_device(self, device):
         self.device = device
