@@ -251,7 +251,7 @@ class FutureEncoder(nn.Module): # approximate posterior
             else:
                 raise ValueError('unknown input_type!')
         traj_in = torch.cat(traj_in, dim=-1)
-        print("original traj_in shape: ", traj_in.shape)
+        # print("original traj_in shape: ", traj_in.shape)
         tf_in = self.input_fc(traj_in.view(-1, traj_in.shape[-1])).view(-1, 1, self.model_dim)
         agent_enc_shuffle = data['agent_enc_shuffle'] if self.agent_enc_shuffle else None
         tf_in_pos = self.pos_encoder(tf_in, num_a=data['agent_num'], agent_enc_shuffle=agent_enc_shuffle)
@@ -379,7 +379,7 @@ class FutureDecoder(nn.Module):
             else:
                 raise ValueError('unknown input_type!')
         traj_in = torch.cat(traj_in, dim=-1)
-        print("regenerated traj_in shape: ", traj_in.shape)
+        # print("regenerated traj_in shape: ", traj_in.shape)
         tf_in = self.copy_future_encoder.input_fc(traj_in.view(-1, traj_in.shape[-1])).view(-1, 1, self.copy_future_encoder.model_dim)
         agent_enc_shuffle = data['agent_enc_shuffle'] if self.copy_future_encoder.agent_enc_shuffle else None
         tf_in_pos = self.copy_future_encoder.pos_encoder(tf_in, num_a=data['agent_num'], agent_enc_shuffle=agent_enc_shuffle)
@@ -587,7 +587,7 @@ class FutureDecoder(nn.Module):
                 z = data['q_z_dist'].mode()
             elif mode == 'infer':
                 z = data['p_z_dist_infer'].sample()
-                z[:, 3:4]= 0.9      # ADE
+                z[:, 0:1]= 0.9      # ADE
                 z[:, 24:25]= 0.9    # FDE
                 # z[:,0:5] = z[:,10:15] = 0.9
                 # z[:,5:10] = z[:,15:20] = 0.6
