@@ -43,7 +43,7 @@ def oracle_prefers_slower_avg_vel(z, pred, pre_motion):
     for i in range(len(z)):
         vel_seqs = pred[i] - torch.cat([pre_motion[:,-1,:].unsqueeze(1), pred[i][:, :-1, :]],dim=1)
         vel_avg = torch.sqrt(vel_seqs[:,:,0].pow(2) + vel_seqs[:,:,1].pow(2)).mean(dim=1) # [bs]
-        print("vel_avg", vel_avg.shape)
+        # print("vel_avg", vel_avg.shape)
         if i == 0:
             des1 = vel_avg
         else:
@@ -143,7 +143,7 @@ def compute_oracle_preference_loss(data, cfg):
         pref_all = torch.stack(prefs_list, dim=0).to(z_tensor.device) # [used_oracles, bs]
         log_z_sm = torch.log(nn.functional.softmax(z_tensor, dim=0))
 
-        assigned_dims = [0,24] # hardcoded for now
+        assigned_dims = [0] # hardcoded for now
 
         loss_unweighted = 0
         N_times = 1 # For how many dimensions does each oracle control.

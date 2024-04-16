@@ -29,6 +29,15 @@ def compute_FDE(pred_arr, gt_arr):
     fde /= len(pred_arr)
     return fde
 
+def compute_avg_vel(pred_arr, _):
+    avgvel = 0.0
+    for pred in pred_arr:
+        # print("pred shape", pred.shape) # [bs, pred_step, 2]
+        vel_seq = pred[:,1:,:] - pred[:,:-1,:]
+        vel_avg = np.sqrt(vel_seq[:,:,0] ** 2 + vel_seq[:,:,1] ** 2).mean()
+        avgvel += vel_avg
+    avgvel /= len(pred_arr)
+    return avgvel
 
 def align_gt(pred, gt):
     frame_from_data = pred[0, :, 0].astype('int64').tolist()
@@ -72,7 +81,8 @@ if __name__ == '__main__':
 
     stats_func = {
         'ADE': compute_ADE,
-        'FDE': compute_FDE
+        'FDE': compute_FDE,
+        'avgvel': compute_avg_vel
     }
 
     stats_meter = {x: AverageMeter() for x in stats_func.keys()}
@@ -117,6 +127,7 @@ if __name__ == '__main__':
             for idx in id_list:
                 # GT traj
                 gt_idx = gt_raw[gt_raw[:, 1] == idx]                          # frames x 4
+                # print("gt_idx shape", gt_idx.shape)
                 # predicted traj
                 ind = np.unique(np.where(all_traj[:, :, 1] == idx)[1].tolist())
                 pred_idx = all_traj[:, ind, :]                                # sample x frames x 4
@@ -133,7 +144,7 @@ if __name__ == '__main__':
                 meter.update(value, n=len(agent_traj))
 
             stats_str = ' '.join([f'{x}: {y.val:.4f} ({y.avg:.4f})' for x, y in stats_meter.items()])
-            print_log(f'evaluating seq {seq_name:s}, forecasting frame {int(frame_list[0]):06d} to {int(frame_list[-1]):06d} {stats_str}', log_file)
+            print_log(f'eval seq {seq_name:s}, forecast fr. {int(frame_list[0]):06d} to {int(frame_list[-1]):06d} {stats_str}', log_file)
 
     print_log('-' * 30 + ' STATS ' + '-' * 30, log_file)
     for name, meter in stats_meter.items():

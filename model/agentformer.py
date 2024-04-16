@@ -555,9 +555,9 @@ class FutureDecoder(nn.Module):
             h = data['agent_context'].repeat_interleave(sample_num, dim=0)
             # p_z_params = self.p_z_net(h)
             # incompatible with categorical
-            p_z_params_1 = self.p_z_net_param1(h)
-            p_z_params_2 = self.p_z_net_param2(h)
-            p_z_params = torch.cat([p_z_params_1, p_z_params_2], dim=-1)
+            p_z_params_1 = self.p_z_net_param1(h)                         # [bs, nz]
+            p_z_params_2 = self.p_z_net_param2(h)                         # [bs, nz]
+            p_z_params = torch.cat([p_z_params_1, p_z_params_2], dim=-1)  # [bs, nz * 2]
             if self.z_type == 'gaussian':
                 data[prior_key] = Normal(params=p_z_params)
             elif self.z_type == 'beta':
@@ -587,8 +587,10 @@ class FutureDecoder(nn.Module):
                 z = data['q_z_dist'].mode()
             elif mode == 'infer':
                 z = data['p_z_dist_infer'].sample()
-                z[:, 0:1]= 0.9      # ADE
-                z[:, 24:25]= 0.9    # FDE
+                # threshold = 0.9
+                # z[:,0:1][z[:,0:1]>threshold] = 0.1      # ADE
+                z[:,0:1] = 0.8
+                # z[:, 24:25]= 0.1    # FDE
                 # z[:,0:5] = z[:,10:15] = 0.9
                 # z[:,5:10] = z[:,15:20] = 0.6
                 # z[:, 12] = 0.1

@@ -92,7 +92,7 @@ twop_get_z_strategy          : 'z_re_post_mode'
 #       `z_re_post_sample`
 #       `z_re_post_mean`
 #       `z_re_post_mode`
-user_give_z_at_test          : false
+user_give_z_at_test          : true
 print_csv                    : false
 
 pretrain                     : false
