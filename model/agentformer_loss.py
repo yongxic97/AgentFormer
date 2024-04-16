@@ -35,8 +35,28 @@ def oracle_prefers_smaller_de_batch(z, pred, gt, compute_DE):
     Instead, we sample random trajectories from the batch to compare '''
     pass
 
-def oracle_prefers_slower_avg_vel(z, pref, gt):
-    pass
+def oracle_prefers_slower_avg_vel(z, pred, pre_motion):
+    des1, des2 = None, None
+    # pred: [z_dim, bs, fut_len, 2]; pre_motion: [fut_len, bs, 2]
+    pre_motion = pre_motion.permute(1,0,2) # [bs, fut_len, 2]
+    bs = pred[0].shape[0] # get batch size
+    for i in range(len(z)):
+        vel_seqs = pred[i] - torch.cat([pre_motion[:,-1,:].unsqueeze(1), pred[i][:, :-1, :]],dim=1)
+        vel_avg = torch.sqrt(vel_seqs[:,:,0].pow(2) + vel_seqs[:,:,1].pow(2)).mean(dim=1) # [bs]
+        print("vel_avg", vel_avg.shape)
+        if i == 0:
+            des1 = vel_avg
+        else:
+            des2 = vel_avg
+    prefs = torch.zeros(bs)
+    for i in range(bs):
+        if des1[i] < des2[i]: # smaller is 'better'
+            prefs[i] = 0.01
+        elif des1[i] > des2[i]:
+            prefs[i] = 0.99
+        else:
+            prefs[i] = 0.5
+    return prefs
 
 def oracle_prefers_larger_mingap(z, pref, gt):
     pass    
@@ -83,7 +103,8 @@ def compute_oracle_preference_loss(data, cfg):
     z = data['oracle_eval_z']                                               # z   : [z_dim]; [bs, nz]
     pred = data['oracle_eval_dec_motion']                                   # pred: [z_dim]; [bs, fut_len, 2]; 
     gt = data['fut_motion_orig']                                            # gt  : [bs, fut_len, 2]
-    
+    pre_motion = data['pre_motion']                                         # pre_motion: [fut_len, bs, 2]  
+
     oracles = cfg['oracles']
     used_oracles = 0
     prefs_list = []
@@ -104,7 +125,7 @@ def compute_oracle_preference_loss(data, cfg):
         prefs_list.append(pref_fde_batch)
         used_oracles += 1
     if oracles['avg_vel']:
-        pref_avg_vel = oracle_prefers_slower_avg_vel(z, pred, gt)
+        pref_avg_vel = oracle_prefers_slower_avg_vel(z, pred, pre_motion)
         prefs_list.append(pref_avg_vel)
         used_oracles += 1
     if oracles['min_gap']:

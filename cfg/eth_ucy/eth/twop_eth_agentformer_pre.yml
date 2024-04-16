@@ -67,11 +67,11 @@ loss_cfg:
     weight: 1.0
     k: 2 # use how many samples for comparison
     oracles:
-      ade                     : true
+      ade                     : false
       ade_batch               : false
-      fde                     : true
+      fde                     : false
       fde_batch               : false
-      avg_vel                 : false
+      avg_vel                 : true
       min_gap                 : false
     assign_tailored_dims      : false
     assign_user_dims          : true
