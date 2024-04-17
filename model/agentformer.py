@@ -589,7 +589,7 @@ class FutureDecoder(nn.Module):
                 z = data['p_z_dist_infer'].sample()
                 # threshold = 0.9
                 # z[:,0:1][z[:,0:1]>threshold] = 0.1      # ADE
-                z[:,8:9] = 10.0
+                z[:,0:1] = 0.3
                 # z[:, 24:25]= 0.1    # FDE
                 # z[:,0:5] = z[:,10:15] = 0.9
                 # z[:,5:10] = z[:,15:20] = 0.6

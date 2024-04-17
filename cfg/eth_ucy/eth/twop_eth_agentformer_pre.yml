@@ -64,7 +64,7 @@ loss_cfg:
     weight: 1.0
     k: 20
   op: # oracle preference
-    weight: 1.0
+    weight: 8.0
     k: 2 # use how many samples for comparison
     oracles:
       ade                     : false
@@ -87,12 +87,12 @@ model_save_freq              : 5
 # ---- Training with oracle preference ----
 
 twop                         : true
-twop_get_z_strategy          : 'z_re_post_mode'
+twop_get_z_strategy          : 'z_re_post_mean'
 #       `z_gt_post_sample`
 #       `z_re_post_sample`
 #       `z_re_post_mean`
 #       `z_re_post_mode`
-user_give_z_at_test          : true
+user_give_z_at_test          : false
 print_csv                    : false
 
 pretrain                     : false
