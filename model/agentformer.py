@@ -598,6 +598,7 @@ class FutureDecoder(nn.Module):
                 # z[:,20:] = 0.4
                 # z = torch.full_like(data['p_z_dist_infer'].sample(), 0.9)
             else:
+                llll
                 raise ValueError('Unknown Mode!')
         # print("z shape: ", z.shape)
         if autoregress: # As in traditional Transformer, the decoder always predicts the future frames autoregressively
