@@ -34,13 +34,26 @@ def compute_avg_vel(pred_arr, _, curr_pos_arr):
     for pred, curr_pos in zip(pred_arr, curr_pos_arr):
         # print("pred shape", pred.shape) # [num_sample, pred_step, 2]
         curr_pos = np.tile(curr_pos, (20, 1)).reshape(20,1,2)
-        print("curr pos shape", curr_pos.shape)
+        # print("curr pos shape", curr_pos.shape)
         last_step = np.concatenate((curr_pos, pred[:, :-1, :]), axis=1)
         vel_seq = pred - last_step
         vel_avg = np.sqrt(vel_seq[:,:,0] ** 2 + vel_seq[:,:,1] ** 2).mean()
         avgvel += vel_avg
     avgvel /= len(pred_arr)
+
     return avgvel
+
+def compute_gt_avg_vel(_, gt_arr, curr_pos_arr):
+    gt_avgvel = 0.0
+    for gt, curr_pos in zip(gt_arr, curr_pos_arr):
+        # print("pred shape", pred.shape) # [num_sample, pred_step, 2]
+        gt_last_step = np.concatenate((curr_pos.reshape(1,2), gt[ :-1, :]), axis=0)
+        gt_vel_seq = gt - gt_last_step
+        gt_vel_avg = np.sqrt(gt_vel_seq[:,0] ** 2 + gt_vel_seq[:,1] ** 2).mean()
+        gt_avgvel += gt_vel_avg
+    gt_avgvel /= len(gt_arr)
+
+    return gt_avgvel
 
 def align_gt(pred, gt):
     frame_from_data = pred[0, :, 0].astype('int64').tolist()
@@ -86,7 +99,8 @@ if __name__ == '__main__':
     stats_func = {
         'ADE': compute_ADE,
         'FDE': compute_FDE,
-        'avgvel': compute_avg_vel
+        'avgvel': compute_avg_vel,
+        'gt_avgvel': compute_gt_avg_vel
     }
 
     stats_meter = {x: AverageMeter() for x in stats_func.keys()}

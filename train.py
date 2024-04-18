@@ -113,7 +113,7 @@ if __name__ == '__main__':
     if args.start_epoch > 0:
         cp_path = cfg.model_path % args.start_epoch
         print_log(f'loading model from checkpoint: {cp_path}', log)
-        model_cp = torch.load(cp_path, map_location='cpu')
+        model_cp = torch.load(cp_path, map_location='cuda:0')
         model.load_state_dict(model_cp['model_dict'])
         if 'opt_dict' in model_cp:
             optimizer.load_state_dict(model_cp['opt_dict'])
@@ -122,6 +122,11 @@ if __name__ == '__main__':
 
     """ start training """
     model.set_device(device)
+    if args.start_epoch > 0:
+        for state in optimizer.state.values():
+            for k,v in state.items():
+                if isinstance(v,torch.Tensor):
+                    state[k] = v.to(device)
     model.train()
     for i in range(args.start_epoch, cfg.num_epochs):
         train(i)
