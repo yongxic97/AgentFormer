@@ -1,4 +1,4 @@
-    python train.py --cfg twop_eth_agentformer_pre
+python train.py --cfg twop_eth_agentformer_pre
 
 sleep 10
 python train.py --cfg twop_hotel_agentformer_pre

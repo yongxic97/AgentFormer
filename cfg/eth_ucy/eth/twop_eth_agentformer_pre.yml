@@ -47,7 +47,7 @@ future_encoder:
 
 # ------------------- VAE-------------------------
 
-nz                           : 25
+nz                           : 2
 sample_k                     : 20
 learn_prior                  : true
 
@@ -92,7 +92,7 @@ twop_get_z_strategy          : 'z_re_post_mean'
 #       `z_re_post_sample`
 #       `z_re_post_mean`
 #       `z_re_post_mode`
-user_give_z_at_test          : true
+user_give_z_at_test          : false
 print_csv                    : false
 
 pretrain                     : false
