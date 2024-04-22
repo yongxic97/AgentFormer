@@ -100,6 +100,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     """ setup """
+    
     cfg = Config(args.cfg)
     if args.epochs is None:
         epochs = [cfg.get_last_epoch()]
