@@ -47,7 +47,7 @@ future_encoder:
 
 # ------------------- VAE-------------------------
 
-nz                           : 2
+nz                           : 25
 sample_k                     : 20
 learn_prior                  : true
 
