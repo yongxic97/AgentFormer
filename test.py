@@ -102,6 +102,8 @@ if __name__ == '__main__':
     """ setup """
     
     cfg = Config(args.cfg)
+    cfg.epochs = args.epochs
+    # print(cfg.epochs)
     if args.epochs is None:
         epochs = [cfg.get_last_epoch()]
     else:

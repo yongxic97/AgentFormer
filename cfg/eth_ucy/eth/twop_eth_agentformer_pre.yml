@@ -25,7 +25,7 @@ tf_version: v2
 tf_model_dim: 256
 tf_ff_dim: 512
 tf_nhead: 8
-tf_dropout: 0.1
+tf_dropout: 0.15
 input_type: ['scene_norm', 'vel']
 pred_type: 'scene_norm'
 sn_out_type: 'norm'
@@ -47,7 +47,7 @@ future_encoder:
 
 # ------------------- VAE-------------------------
 
-nz                           : 25
+nz                           : 2
 sample_k                     : 20
 learn_prior                  : true
 

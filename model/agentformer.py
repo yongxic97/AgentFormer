@@ -228,6 +228,8 @@ class FutureEncoder(nn.Module): # approximate posterior
             "-%d_%b_%Y_%H_%M_%S.csv", time.localtime()
         )
 
+        self.csv_newstamp = str(ctx['epochs']) + ".csv"
+
     def forward(self, data, reparam=True):
         traj_in = []
         for key in self.input_type:
@@ -290,15 +292,15 @@ class FutureEncoder(nn.Module): # approximate posterior
         if self.print_csv:
             alpha_np = q_z_params_alpha.detach().cpu().numpy()
             beta_np = q_z_params_beta.detach().cpu().numpy()
-            with open("./latent/alpha_np_"+self.csv_timestamp, "a", newline="") as f:
+            with open("./test/z_data/0419_0103_take1/a_post/"+self.csv_newstamp, "a", newline="") as f:
                 writer = csv.writer(f)
                 writer.writerows(alpha_np)
             
-            with open("./latent/beta_np_"+self.csv_timestamp, "a", newline="") as f:
+            with open("./test/z_data/0419_0103_take1/b_post/"+self.csv_newstamp, "a", newline="") as f:
                 writer = csv.writer(f)
                 writer.writerows(beta_np)  
 
-            with open("./latent/sampled_z_prior_"+self.csv_timestamp, "a", newline="") as f:
+            with open("./test/z_data/0419_0103_take1/z_post/"+self.csv_newstamp, "a", newline="") as f:
                 writer = csv.writer(f)
                 writer.writerows(data['q_z_samp'].detach().cpu().numpy())  
 
@@ -322,6 +324,7 @@ class FutureDecoder(nn.Module):
         self.nz = ctx['nz']
         self.z_type = ctx['z_type']
         print("FutureDecoder in ", self.z_type, " mode.")
+        self.print_csv = ctx['print_csv']
         self.model_dim = ctx['tf_model_dim']
         self.ff_dim = ctx['tf_ff_dim']
         self.nhead = ctx['tf_nhead']
@@ -365,6 +368,8 @@ class FutureDecoder(nn.Module):
             initialize_weights(self.p_z_net_param1.modules())
             initialize_weights(self.p_z_net_param2.modules())
         self.copy_future_encoder = future_encoder
+
+        self.csv_newstamp = str(ctx['epochs']) + ".csv"
 
     def regen_posterior(self, data, pred_vel, pred_sn):
         traj_in = []
@@ -578,6 +583,21 @@ class FutureDecoder(nn.Module):
                 z = data['q_z_samp'] if mode == 'train' else data['q_z_dist'].mode()
             elif mode == 'infer':
                 z = data['p_z_dist_infer'].sample()
+
+                if self.print_csv:
+                    alpha_np = (F.elu(p_z_params_1)+2.0).detach().cpu().numpy()
+                    beta_np  = (F.elu(p_z_params_2)+2.0).detach().cpu().numpy()
+                    with open("./test/z_data/0419_0103_take1/a_prior/"+self.csv_newstamp, "a", newline="") as f:
+                        writer = csv.writer(f)
+                        writer.writerows(alpha_np)
+                    
+                    with open("./test/z_data/0419_0103_take1/b_prior/"+self.csv_newstamp, "a", newline="") as f:
+                        writer = csv.writer(f)
+                        writer.writerows(beta_np)  
+
+                    with open("./test/z_data/0419_0103_take1/z_prior/"+self.csv_newstamp, "a", newline="") as f:
+                        writer = csv.writer(f)
+                        writer.writerows(z.detach().cpu().numpy())  
             else:
                 raise ValueError('Unknown Mode!')
         elif z is None and self.user_give_z_at_test:
@@ -591,7 +611,7 @@ class FutureDecoder(nn.Module):
                 # z[:,0:1][z[:,0:1]<threshold] = threshold      # ADE
                 # z[:,13:14] = 0.5
                 # z[:,0:1] = 0.9
-                z[:,0:1] = 0.3
+                z[:,0:1] = 0.1
                 # z[:, 24:25]= 0.1    # FDE
                 # z[:,0:5] = z[:,10:15] = 0.9
                 # z[:,5:10] = z[:,15:20] = 0.6
@@ -670,6 +690,7 @@ class AgentFormer(nn.Module):
             'twop_get_z_strategy': cfg.get('twop_get_z_strategy', 'z_gt_post_sample'),
             'print_csv': cfg.get('print_csv', False),
             'user_give_z_at_test': cfg.get('user_give_z_at_test', False),
+            'epochs': cfg.get('epochs', 0)
         }
         print("AgentFormer in ", self.ctx['z_type'], " mode.")
         if self.ctx['user_give_z_at_test']: print("Using user supplied z at test time.")
