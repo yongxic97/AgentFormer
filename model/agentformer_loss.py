@@ -138,10 +138,10 @@ def compute_oracle_preference_loss(data, cfg):
         pass
         loss_unweighted = 0
     elif cfg['assign_user_dims']:
-        z_tensor = torch.stack((z[0], z[1]))                                    # [z_dim, bs, nz]
+        z_tensor = torch.stack((z[0], z[1]))                                        # [z_dim, bs, nz]
         # pref_all = torch.stack([pref_ade, pref_fde], dim=0).to(z_tensor.device) # [2, bs]
-        pref_all = torch.stack(prefs_list, dim=0).to(z_tensor.device) # [used_oracles, bs]
-        log_z_sm = torch.log(nn.functional.softmax(z_tensor, dim=0))
+        pref_all = torch.stack(prefs_list, dim=0).to(z_tensor.device)               # [used_oracles, bs]
+        log_z_sm = torch.log(nn.functional.softmax(z_tensor, dim=0))                # [z_dim, bs, nz]
 
         assigned_dims = [0] # hardcoded for now
 

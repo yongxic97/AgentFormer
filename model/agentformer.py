@@ -229,6 +229,7 @@ class FutureEncoder(nn.Module): # approximate posterior
         )
 
         self.csv_newstamp = str(ctx['epochs']) + ".csv"
+        self.this_run_info = '0419_0101_take1'
 
     def forward(self, data, reparam=True):
         traj_in = []
@@ -292,15 +293,15 @@ class FutureEncoder(nn.Module): # approximate posterior
         if self.print_csv:
             alpha_np = q_z_params_alpha.detach().cpu().numpy()
             beta_np = q_z_params_beta.detach().cpu().numpy()
-            with open("./test/z_data/0419_0103_take2/a_post/"+self.csv_newstamp, "a", newline="") as f:
+            with open("./test/z_data/"+self.this_run_info+"/a_post/"+self.csv_newstamp, "a", newline="") as f:
                 writer = csv.writer(f)
                 writer.writerows(alpha_np)
             
-            with open("./test/z_data/0419_0103_take2/b_post/"+self.csv_newstamp, "a", newline="") as f:
+            with open("./test/z_data/"+self.this_run_info+"/b_post/"+self.csv_newstamp, "a", newline="") as f:
                 writer = csv.writer(f)
                 writer.writerows(beta_np)  
 
-            with open("./test/z_data/0419_0103_take2/z_post/"+self.csv_newstamp, "a", newline="") as f:
+            with open("./test/z_data/"+self.this_run_info+"/z_post/"+self.csv_newstamp, "a", newline="") as f:
                 writer = csv.writer(f)
                 writer.writerows(data['q_z_samp'].detach().cpu().numpy())  
 
@@ -370,6 +371,7 @@ class FutureDecoder(nn.Module):
         self.copy_future_encoder = future_encoder
 
         self.csv_newstamp = str(ctx['epochs']) + ".csv"
+        self.this_run_info = '0419_0101_take1'
 
     def regen_posterior(self, data, pred_vel, pred_sn):
         traj_in = []
@@ -587,15 +589,15 @@ class FutureDecoder(nn.Module):
                 if self.print_csv:
                     alpha_np = (F.elu(p_z_params_1)+2.0).detach().cpu().numpy()
                     beta_np  = (F.elu(p_z_params_2)+2.0).detach().cpu().numpy()
-                    with open("./test/z_data/0419_0103_take2/a_prior/"+self.csv_newstamp, "a", newline="") as f:
+                    with open("./test/z_data/"+self.this_run_info+"/a_prior/"+self.csv_newstamp, "a", newline="") as f:
                         writer = csv.writer(f)
                         writer.writerows(alpha_np)
                     
-                    with open("./test/z_data/0419_0103_take2/b_prior/"+self.csv_newstamp, "a", newline="") as f:
+                    with open("./test/z_data/"+self.this_run_info+"/b_prior/"+self.csv_newstamp, "a", newline="") as f:
                         writer = csv.writer(f)
                         writer.writerows(beta_np)  
 
-                    with open("./test/z_data/0419_0103_take2/z_prior/"+self.csv_newstamp, "a", newline="") as f:
+                    with open("./test/z_data/"+self.this_run_info+"/z_prior/"+self.csv_newstamp, "a", newline="") as f:
                         writer = csv.writer(f)
                         writer.writerows(z.detach().cpu().numpy())  
             else:
