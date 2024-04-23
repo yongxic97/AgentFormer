@@ -13,6 +13,7 @@ from utils.utils import initialize_weights
 
 import csv
 import time
+import random
 
 
 def generate_ar_mask(sz, agent_num, agent_mask):
@@ -306,7 +307,6 @@ class FutureEncoder(nn.Module): # approximate posterior
                 writer.writerows(data['q_z_samp'].detach().cpu().numpy())  
 
 
-
 """ Future Decoder """
 class FutureDecoder(nn.Module):
     def __init__(self, cfg, ctx, loss_cfg, future_encoder, **kwargs):
@@ -336,9 +336,10 @@ class FutureDecoder(nn.Module):
         self.agent_enc_shuffle = ctx['agent_enc_shuffle']
         self.learn_prior = ctx['learn_prior']
         self.twop = ctx['twop']
+        self.twop_get_z_strategy = ctx['twop_get_z_strategy']
+        self.twop_sample_z_from_hc_set = ctx['twop_sample_z_from_hc_set']
         self.user_give_z_at_test = ctx['user_give_z_at_test']
         self.loss_cfg = loss_cfg
-        self.twop_get_z_strategy = ctx['twop_get_z_strategy']
         # networks
         in_dim = forecast_dim + len(self.input_type) * forecast_dim + self.nz
         if 'map' in self.input_type:
@@ -545,7 +546,7 @@ class FutureDecoder(nn.Module):
                 elif self.twop_get_z_strategy == 'z_re_post_mean':
                     data['oracle_eval_z'][gen_pref] = z_post_re.mean()
                 else:
-                    raise NotImplementedError("[FutureDecoder] Unkonwn twop getting z strategy.")
+                    raise NotImplementedError("[FutureDecoder] Unknown twop getting z strategy.")
 
     def decode_traj_batch(self, data, mode, context, pre_motion, pre_vel, pre_motion_scene_norm, z, sample_num):
         raise NotImplementedError
@@ -638,13 +639,22 @@ class FutureDecoder(nn.Module):
             data['oracle_eval_dec_motion'] = defaultdict(lambda: None)
             data['oracle_eval_attn_weights'] = defaultdict(lambda: None)
 
+            if self.twop_sample_z_from_hc_set:
+                z_hc_set = [0.1, 0.3, 0.5, 0.7, 0.9]
+                z_sampled = []
+                z_sampled.append(random.choice(z_hc_set))
+                z_hc_set.remove(z_sampled[0])
+                z_sampled.append(random.choice(z_hc_set))
             for i in range(int(self.loss_cfg['op']['k'])):
                 # print(f"Generating extra samples for twop... Index: {i}")
-                z_twop = data['q_z_dist'].rsample() # at inference time, sample from approximate posterior
+                z_twop = data['q_z_dist'].rsample() # at inference time, sample from approximate posterior                
+                # [bs, nz]
+                if self.twop_sample_z_from_hc_set:
+                    z_twop = z_twop.clone().detach().requires_grad_(False).to(z_twop.device)
+                    z_twop[:, 0:1] = torch.tensor(z_sampled[i])
                 if self.twop_get_z_strategy == 'z_gt_post_sample':
                     data['oracle_eval_z'][i] = z_twop 
                 self.decode_traj_ar(data, mode, context, pre_motion, pre_vel, pre_motion_scene_norm, z_twop, sample_num, need_weights=need_weights, gen_pref=i)
-        #########################
 
 
 """ AgentFormer """
@@ -689,6 +699,7 @@ class AgentFormer(nn.Module):
             'learn_prior': cfg.get('learn_prior', False),
             'use_map': cfg.get('use_map', False),
             'twop': cfg.get('twop', False),
+            'twop_sample_z_from_hc_set': cfg.get('twop_sample_z_from_hc_set', False),
             'twop_get_z_strategy': cfg.get('twop_get_z_strategy', 'z_gt_post_sample'),
             'print_csv': cfg.get('print_csv', False),
             'user_give_z_at_test': cfg.get('user_give_z_at_test', False),

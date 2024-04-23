@@ -28,14 +28,16 @@ def oracle_prefers_smaller_de(z, pred, gt, compute_DE):
             prefs[i] = 0.99
         else:
             prefs[i] = 0.5
-    return prefs
+    de_mask = torch.ones(bs)
+
+    return prefs, de_mask
 
 def oracle_prefers_smaller_de_batch(z, pred, gt, compute_DE):
     ''' For this, the multiple predictions are not used. 
     Instead, we sample random trajectories from the batch to compare '''
     pass
 
-def oracle_prefers_slower_avg_vel(z, pred, pre_motion):
+def oracle_prefers_slower_avg_vel(z, pred, pre_motion, mask=False):
     des1, des2 = None, None
     # pred: [z_dim, bs, fut_len, 2]; pre_motion: [fut_len, bs, 2]
     pre_motion = pre_motion.permute(1,0,2) # [bs, fut_len, 2]
@@ -56,7 +58,27 @@ def oracle_prefers_slower_avg_vel(z, pred, pre_motion):
             prefs[i] = 0.99
         else:
             prefs[i] = 0.5
-    return prefs
+
+    vel_mask = torch.ones(bs) # All ones. This means no mask.
+    if mask:
+        gt_vel = 0.3525 # ground truth for eth
+        ## Comparative mask
+        # Only consider those prediction pairs (y1e, y2e) that (y1e-y_gt) * (y2e-y_gt) < 0 
+        # (one smaller than ground truth, one larger)
+        for i in range(bs):
+            if (des1[i] - gt_vel) * (des2[i] - gt_vel) >= 0:
+                vel_mask[i] = 0
+        ########## END of Comparative mask ##########
+
+        ## Percentage mask
+        # Only consider those prediction pairs (y1e, y2e) that |(yie-y_gt) / y_gt| > 5%
+        percentage_threshold = 0.05
+        for i in range(bs):
+            if abs(des1[i] - gt_vel) / gt_vel < percentage_threshold \
+                and abs(des2[i] - gt_vel) / gt_vel < percentage_threshold:
+                vel_mask[i] = 0
+        ########## END of Percentage mask ##########
+    return prefs, vel_mask
 
 def oracle_prefers_larger_mingap(z, pref, gt):
     pass    
@@ -99,7 +121,6 @@ def compute_sample_loss(data, cfg):
 
 
 def compute_oracle_preference_loss(data, cfg):
-
     z = data['oracle_eval_z']                                               # z   : [z_dim]; [bs, nz]
     pred = data['oracle_eval_dec_motion']                                   # pred: [z_dim]; [bs, fut_len, 2]; 
     gt = data['fut_motion_orig']                                            # gt  : [bs, fut_len, 2]
@@ -108,25 +129,30 @@ def compute_oracle_preference_loss(data, cfg):
     oracles = cfg['oracles']
     used_oracles = 0
     prefs_list = []
+    mask_list = []
+
     if oracles['ade']:
-        pref_ade = oracle_prefers_smaller_de(z, pred, gt, compute_ADE)          # [bs]
+        pref_ade, ade_mask = oracle_prefers_smaller_de(z, pred, gt, compute_ADE)          # [bs]
         prefs_list.append(pref_ade)
+        mask_list.append(ade_mask)
         used_oracles += 1
     if oracles['fde']:
-        pref_fde = oracle_prefers_smaller_de(z, pred, gt, compute_FDE)          # [bs]
+        pref_fde, fde_mask = oracle_prefers_smaller_de(z, pred, gt, compute_FDE)          # [bs]
         prefs_list.append(pref_fde)
+        mask_list.append(fde_mask)
         used_oracles += 1
     if oracles['ade_batch']:
-        pref_ade_batch = oracle_prefers_smaller_de_batch(z, pred, gt, compute_ADE)
+        pref_ade_batch,_ = oracle_prefers_smaller_de_batch(z, pred, gt, compute_ADE)
         prefs_list.append(pref_ade_batch)
         used_oracles += 1
     if oracles['fde_batch']:
-        pref_fde_batch = oracle_prefers_smaller_de_batch(z, pred, gt, compute_FDE)
+        pref_fde_batch,_ = oracle_prefers_smaller_de_batch(z, pred, gt, compute_FDE)
         prefs_list.append(pref_fde_batch)
         used_oracles += 1
     if oracles['avg_vel']:
-        pref_avg_vel = oracle_prefers_slower_avg_vel(z, pred, pre_motion)
+        pref_avg_vel, vel_mask = oracle_prefers_slower_avg_vel(z, pred, pre_motion, mask=cfg['mask_insignificant_comp'])
         prefs_list.append(pref_avg_vel)
+        mask_list.append(vel_mask)
         used_oracles += 1
     if oracles['min_gap']:
         pref_mingap = oracle_prefers_larger_mingap(z, pred, gt)
@@ -141,6 +167,7 @@ def compute_oracle_preference_loss(data, cfg):
         z_tensor = torch.stack((z[0], z[1]))                                        # [z_dim, bs, nz]
         # pref_all = torch.stack([pref_ade, pref_fde], dim=0).to(z_tensor.device) # [2, bs]
         pref_all = torch.stack(prefs_list, dim=0).to(z_tensor.device)               # [used_oracles, bs]
+        mask_all = torch.stack(mask_list, dim=0).to(z_tensor.device)                # [used_oracles, bs]
         log_z_sm = torch.log(nn.functional.softmax(z_tensor, dim=0))                # [z_dim, bs, nz]
 
         assigned_dims = [0] # hardcoded for now
@@ -149,11 +176,11 @@ def compute_oracle_preference_loss(data, cfg):
         N_times = 1 # For how many dimensions does each oracle control.
         for i in range(used_oracles):
             for j in range(N_times):
-                this_loss = torch.sum(log_z_sm[1, :, assigned_dims[i] * N_times + j] * pref_all[i,:]) + \
-                            torch.sum(log_z_sm[0, :, assigned_dims[i] * N_times + j] * (1-pref_all[i,:]))
+                this_loss = torch.sum(log_z_sm[1, :, assigned_dims[i] * N_times + j] * pref_all[i,:]) * mask_all[i,:] + \
+                            torch.sum(log_z_sm[0, :, assigned_dims[i] * N_times + j] * (1-pref_all[i,:]) * mask_all[i,:])
                 loss_unweighted += this_loss
         loss_unweighted = -loss_unweighted / (used_oracles * N_times)
-    else:
+    else: # old method
         z_tensor = torch.stack((z[0], z[1]))                                    # [z_dim, bs, nz]
         # pref_all = torch.stack([pref_ade, pref_fde], dim=0).to(z_tensor.device) # [2, bs]
         pref_all = torch.stack(prefs_list, dim=0).to(z_tensor.device) # [used_oracles, bs]
