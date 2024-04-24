@@ -230,7 +230,7 @@ class FutureEncoder(nn.Module): # approximate posterior
         )
 
         self.csv_newstamp = str(ctx['epochs']) + ".csv"
-        self.this_run_info = '0419_0101_take1'
+        self.this_run_info = '0424_0101_take1'
 
     def forward(self, data, reparam=True):
         traj_in = []
@@ -372,7 +372,7 @@ class FutureDecoder(nn.Module):
         self.copy_future_encoder = future_encoder
 
         self.csv_newstamp = str(ctx['epochs']) + ".csv"
-        self.this_run_info = '0419_0101_take1'
+        self.this_run_info = '0424_0101_take1'
 
     def regen_posterior(self, data, pred_vel, pred_sn):
         traj_in = []
@@ -614,7 +614,7 @@ class FutureDecoder(nn.Module):
                 # z[:,0:1][z[:,0:1]<threshold] = threshold      # ADE
                 # z[:,13:14] = 0.5
                 # z[:,0:1] = 0.9
-                z[:,0:1] = 0.1
+                z[:,0:1] = 0.7
                 # z[:, 24:25]= 0.1    # FDE
                 # z[:,0:5] = z[:,10:15] = 0.9
                 # z[:,5:10] = z[:,15:20] = 0.6
@@ -865,8 +865,10 @@ class AgentFormer(nn.Module):
             if loss_name is 'op':
                 if not self.ctx['twop']:
                     continue
-            loss, loss_unweighted = loss_func[loss_name](self.data, self.loss_cfg[loss_name])
+                loss, loss_unweighted, used = loss_func[loss_name](self.data, self.loss_cfg[loss_name])
+            else:
+                loss, loss_unweighted = loss_func[loss_name](self.data, self.loss_cfg[loss_name])
             total_loss += loss
             loss_dict[loss_name] = loss.item()
             loss_unweighted_dict[loss_name] = loss_unweighted.item()
-        return total_loss, loss_dict, loss_unweighted_dict
+        return total_loss, loss_dict, loss_unweighted_dict, used

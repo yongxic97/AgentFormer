@@ -37,14 +37,16 @@ def oracle_prefers_smaller_de_batch(z, pred, gt, compute_DE):
     Instead, we sample random trajectories from the batch to compare '''
     pass
 
-def oracle_prefers_slower_avg_vel(z, pred, pre_motion, mask=False):
+def oracle_prefers_slower_avg_vel(z, pred, gt, pre_motion, mask=False):
     des1, des2 = None, None
     # pred: [z_dim, bs, fut_len, 2]; pre_motion: [fut_len, bs, 2]
     pre_motion = pre_motion.permute(1,0,2) # [bs, fut_len, 2]
     bs = pred[0].shape[0] # get batch size
+
     for i in range(len(z)):
         vel_seqs = pred[i] - torch.cat([pre_motion[:,-1,:].unsqueeze(1), pred[i][:, :-1, :]],dim=1)
         vel_avg = torch.sqrt(vel_seqs[:,:,0].pow(2) + vel_seqs[:,:,1].pow(2)).mean(dim=1) # [bs]
+
         # print("vel_avg", vel_avg.shape)
         if i == 0:
             des1 = vel_avg
@@ -61,25 +63,32 @@ def oracle_prefers_slower_avg_vel(z, pred, pre_motion, mask=False):
 
     vel_mask = torch.ones(bs) # All ones. This means no mask.
     if mask:
-        gt_vel = 0.3525 # ground truth for eth
+        used = torch.ones(bs)
+        # gt_vel = 0.3525 # ground truth for eth
+        gt_vel_seq = gt - torch.cat([pre_motion[:,-1,:].unsqueeze(1), gt[:, :-1, :]],dim=1)
+        gt_vel = torch.sqrt(gt_vel_seq[:,:,0].pow(2) + gt_vel_seq[:,:,1].pow(2)).mean(dim=1) # [bs]
         #TODO: change to grount truth of datapoint
         ## Comparative mask
         # Only consider those prediction pairs (y1e, y2e) that (y1e-y_gt) * (y2e-y_gt) < 0 
         # (one smaller than ground truth, one larger)
         for i in range(bs):
-            if (des1[i] - gt_vel) * (des2[i] - gt_vel) >= 0:
+            if (des1[i] - gt_vel[i]) * (des2[i] - gt_vel[i]) >= 0:
                 vel_mask[i] = 0
+                used[i] = 0
         ########## END of Comparative mask ##########
 
         ## Percentage mask
         # Only consider those prediction pairs (y1e, y2e) that |(yie-y_gt) / y_gt| > 5%
         percentage_threshold = 0.05
         for i in range(bs):
-            if abs(des1[i] - gt_vel) / gt_vel < percentage_threshold \
-                and abs(des2[i] - gt_vel) / gt_vel < percentage_threshold:
+            if abs(des1[i] - gt_vel[i]) / gt_vel[i] < percentage_threshold \
+                or abs(des2[i] - gt_vel[i]) / gt_vel[i] < percentage_threshold:
                 vel_mask[i] = 0
+                used[i] = 0
+        
+        used_cnt = torch.sum(used)
         ########## END of Percentage mask ##########
-    return prefs, vel_mask
+    return prefs, vel_mask, used_cnt
 
 def oracle_prefers_larger_mingap(z, pref, gt):
     pass    
@@ -151,7 +160,7 @@ def compute_oracle_preference_loss(data, cfg):
         prefs_list.append(pref_fde_batch)
         used_oracles += 1
     if oracles['avg_vel']:
-        pref_avg_vel, vel_mask = oracle_prefers_slower_avg_vel(z, pred, pre_motion, mask=cfg['mask_insignificant_comp'])
+        pref_avg_vel, vel_mask, used = oracle_prefers_slower_avg_vel(z, pred, gt, pre_motion, mask=cfg['mask_insignificant_comp'])
         prefs_list.append(pref_avg_vel)
         mask_list.append(vel_mask)
         used_oracles += 1
@@ -216,7 +225,7 @@ def compute_oracle_preference_loss(data, cfg):
     else:
         loss_unweighted = loss_unweighted.sum()
     loss = loss_unweighted * cfg['weight']
-    return loss, loss_unweighted
+    return loss, loss_unweighted, used
 
 
 loss_func = {
