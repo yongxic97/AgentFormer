@@ -62,6 +62,7 @@ def oracle_prefers_slower_avg_vel(z, pred, pre_motion, mask=False):
     vel_mask = torch.ones(bs) # All ones. This means no mask.
     if mask:
         gt_vel = 0.3525 # ground truth for eth
+        #TODO: change to grount truth of datapoint
         ## Comparative mask
         # Only consider those prediction pairs (y1e, y2e) that (y1e-y_gt) * (y2e-y_gt) < 0 
         # (one smaller than ground truth, one larger)

@@ -325,7 +325,7 @@ class FutureDecoder(nn.Module):
         self.nz = ctx['nz']
         self.z_type = ctx['z_type']
         print("FutureDecoder in ", self.z_type, " mode.")
-        self.print_csv = ctx['print_csv']
+        self.print_csv = ctx['print_csv']   
         self.model_dim = ctx['tf_model_dim']
         self.ff_dim = ctx['tf_ff_dim']
         self.nhead = ctx['tf_nhead']
