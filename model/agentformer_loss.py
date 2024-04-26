@@ -55,9 +55,9 @@ def oracle_prefers_slower_avg_vel(z, pred, gt, pre_motion, mask=False):
     prefs = torch.zeros(bs)
     for i in range(bs):
         if des1[i] < des2[i]: # smaller is 'better'
-            prefs[i] = 0.01
+            prefs[i] = 0.001
         elif des1[i] > des2[i]:
-            prefs[i] = 0.99
+            prefs[i] = 0.999
         else:
             prefs[i] = 0.5
 

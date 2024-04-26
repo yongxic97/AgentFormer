@@ -64,7 +64,7 @@ loss_cfg:
     weight: 1.0
     k: 20
   op: # oracle preference
-    weight: 16.0
+    weight: 2.0
     k: 2 # use how many samples for comparison
     oracles:
       ade                     : false
@@ -98,5 +98,5 @@ user_give_z_at_test          : false
 print_csv                    : false
 
 pretrain                     : false
-add_loss_eps                 : 30 # After how many epochs to add the preference loss
+add_loss_eps                 : 10 # After how many epochs to add the preference loss
 

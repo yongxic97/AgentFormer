@@ -45,12 +45,15 @@ def train(epoch):
 
             if not cfg.pretrain:
                 total_loss, loss_dict, loss_unweighted_dict, used = model.compute_loss()
+                used_pref_pair_cnt += used
             else:
                 if epoch <= cfg.add_loss_eps:
                     total_loss, loss_dict, loss_unweighted_dict = model.compute_original_loss()
                 else:
-                    total_loss, loss_dict, loss_unweighted_dict = model.compute_loss()
-            used_pref_pair_cnt += used
+                    total_loss, loss_dict, loss_unweighted_dict, used = model.compute_loss()
+                    used_pref_pair_cnt += used
+            
+            
             """ optimize """
             optimizer.zero_grad()
             total_loss.backward()
