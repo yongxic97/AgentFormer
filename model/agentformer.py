@@ -339,6 +339,8 @@ class FutureDecoder(nn.Module):
         self.twop_get_z_strategy = ctx['twop_get_z_strategy']
         self.twop_sample_z_from_hc_set = ctx['twop_sample_z_from_hc_set']
         self.user_give_z_at_test = ctx['user_give_z_at_test']
+        self.external_assign_z_at_test = ctx['external_assign_z_at_test']
+        self.user_z = ctx['user_z']
         self.loss_cfg = loss_cfg
         # networks
         in_dim = forecast_dim + len(self.input_type) * forecast_dim + self.nz
@@ -612,7 +614,10 @@ class FutureDecoder(nn.Module):
                 z = data['p_z_dist_infer'].sample()
                 threshold = 0.95
                 # z[:,0:1][z[:,0:1]<threshold] = threshold      # ADE
-                z[:,0:1] = 0.1
+                if self.external_assign_z_at_test:
+                    z[:,0:1] = self.user_z
+                else:
+                    z[:,0:1] = 0.1
                 # z[:, 24:25]= 0.1    # FDE
                 # z[:,0:5] = z[:,10:15] = 0.9
                 # z[:,5:10] = z[:,15:20] = 0.6
@@ -701,6 +706,8 @@ class AgentFormer(nn.Module):
             'twop_get_z_strategy': cfg.get('twop_get_z_strategy', 'z_gt_post_sample'),
             'print_csv': cfg.get('print_csv', False),
             'user_give_z_at_test': cfg.get('user_give_z_at_test', False),
+            'external_assign_z_at_test': cfg.get('external_assign_z_at_test', False),
+            'user_z': cfg.get('user_z', 0.0),
             'epochs': cfg.get('epochs', 0)
         }
         print("AgentFormer in ", self.ctx['z_type'], " mode.")

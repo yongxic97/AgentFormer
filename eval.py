@@ -5,6 +5,7 @@ from data.nuscenes_pred_split import get_nuscenes_pred_split
 from data.ethucy_split import get_ethucy_split
 from utils.utils import print_log, AverageMeter, isfile, print_log, AverageMeter, isfile, isfolder, find_unique_common_from_lists, load_list_from_folder, load_txt_file
 
+import csv
 
 """ Metrics """
 
@@ -73,10 +74,16 @@ if __name__ == '__main__':
     parser.add_argument('--results_dir', default=None)
     parser.add_argument('--data', default='test')
     parser.add_argument('--log_file', default=None)
+    parser.add_argument('--user_z', default=None)
+    parser.add_argument('--epochs', default=None)
     args = parser.parse_args()
 
     dataset = args.dataset.lower()
     results_dir = args.results_dir
+    user_z = args.user_z
+    epochs = args.epochs
+    this_run_info = f"0424_0101_take1"
+    save_metrics_file = f'test/all_avgvel_ade_fde/{this_run_info}/{epochs}.csv'
     
     if dataset == 'nuscenes_pred':   # nuscenes
         data_root = f'datasets/nuscenes_pred'
@@ -169,7 +176,17 @@ if __name__ == '__main__':
             print_log(f'eval seq {seq_name:s}, forecast fr. {int(frame_list[0]):06d} to {int(frame_list[-1]):06d} {stats_str}', log_file)
 
     print_log('-' * 30 + ' STATS ' + '-' * 30, log_file)
+    this_ade, this_fde, this_avgvel = 0.0, 0.0, 0.0
     for name, meter in stats_meter.items():
         print_log(f'{meter.count} {name}: {meter.avg:.4f}', log_file)
+        if name == 'ADE':            this_ade = meter.avg
+        if name == 'FDE':            this_fde = meter.avg
+        if name == 'avgvel':         this_avgvel = meter.avg
+
+    with open(save_metrics_file, "a", newline='') as f:
+        # file.write(f'{meter.avg:.4f},')
+        writer = csv.writer(f)
+        writer.writerow([this_ade, this_fde, this_avgvel])
+
     print_log('-' * 67, log_file)
     log_file.close()

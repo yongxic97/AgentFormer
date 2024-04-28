@@ -100,3 +100,4 @@ print_csv                    : false
 pretrain                     : false
 add_loss_eps                 : 10 # After how many epochs to add the preference loss
 
+external_assign_z_at_test    : true

@@ -97,12 +97,15 @@ if __name__ == '__main__':
     parser.add_argument('--gpu', type=int, default=0)
     parser.add_argument('--cached', action='store_true', default=False)
     parser.add_argument('--cleanup', action='store_true', default=False)
+    parser.add_argument('--user_z', type=float, default=0.0)
     args = parser.parse_args()
+    print(args.user_z)
 
     """ setup """
     
     cfg = Config(args.cfg)
     cfg.epochs = args.epochs
+    cfg.user_z = args.user_z
     # print(cfg.epochs)
     if args.epochs is None:
         epochs = [cfg.get_last_epoch()]
@@ -141,7 +144,7 @@ if __name__ == '__main__':
                 test_model(generator, save_dir, cfg)
 
             log_file = os.path.join(cfg.log_dir, 'log_eval.txt')
-            cmd = f"python eval.py --dataset {cfg.dataset} --results_dir {eval_dir} --data {split} --log {log_file}"
+            cmd = f"python eval.py --dataset {cfg.dataset} --results_dir {eval_dir} --data {split} --log {log_file} --user_z {cfg.user_z} --epochs {cfg.epoch}"
             subprocess.run(cmd.split(' '))
 
             # remove eval folder to save disk space
