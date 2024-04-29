@@ -19,12 +19,12 @@ torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = True
 
 
-def logging(cfg, epoch, total_epoch, iter, total_iter, ep, seq, frame, losses_str, log):
+def logging(cfg, epoch, total_epoch, iter, total_iter, ep, seq, frame, losses_str, used_pair, log):
 	print_log('{} | Epo: {:02d}/{:02d}, '
 		'It: {:04d}/{:04d}, '
-		'EP: {:s}, ETA: {:s}, seq {:s}, frame {:05d}, {}'
+		'EP: {:s}, ETA: {:s}, seq {:s}, frame {:05d}, {}, used_pairs_cnt: {}'
         .format(cfg, epoch, total_epoch, iter, total_iter, \
-		convert_secs2time(ep), convert_secs2time(ep / iter * (total_iter * (total_epoch - epoch) - iter)), seq, frame, losses_str), log)
+		convert_secs2time(ep), convert_secs2time(ep / iter * (total_iter * (total_epoch - epoch) - iter)), seq, frame, losses_str, used_pair), log)
 
 
 def train(epoch):
@@ -34,13 +34,26 @@ def train(epoch):
     train_loss_meter = {x: AverageMeter() for x in cfg.loss_cfg.keys()}
     train_loss_meter['total_loss'] = AverageMeter()
     last_generator_index = 0
+
+    used_pref_pair_cnt = 0.0
     while not generator.is_epoch_end():
         data = generator()
         if data is not None:
             seq, frame = data['seq'], data['frame']
             model.set_data(data)
             model_data = model()
-            total_loss, loss_dict, loss_unweighted_dict = model.compute_loss()
+
+            if not cfg.pretrain:
+                total_loss, loss_dict, loss_unweighted_dict, used = model.compute_loss()
+                used_pref_pair_cnt += used
+            else:
+                if epoch <= cfg.add_loss_eps:
+                    total_loss, loss_dict, loss_unweighted_dict = model.compute_original_loss()
+                else:
+                    total_loss, loss_dict, loss_unweighted_dict, used = model.compute_loss()
+                    used_pref_pair_cnt += used
+            
+            
             """ optimize """
             optimizer.zero_grad()
             total_loss.backward()
@@ -53,7 +66,7 @@ def train(epoch):
         if generator.index - last_generator_index > cfg.print_freq:
             ep = time.time() - since_train
             losses_str = ' '.join([f'{x}: {y.avg:.3f} ({y.val:.3f})' for x, y in train_loss_meter.items()])
-            logging(args.cfg, epoch, cfg.num_epochs, generator.index, generator.num_total_samples, ep, seq, frame, losses_str, log)
+            logging(args.cfg, epoch, cfg.num_epochs, generator.index, generator.num_total_samples, ep, seq, frame, losses_str, used_pref_pair_cnt, log)
             for name, meter in train_loss_meter.items():
                 tb_logger.add_scalar('model_' + name, meter.avg, tb_ind)
             tb_ind += 1
@@ -61,6 +74,8 @@ def train(epoch):
 
     scheduler.step()
     model.step_annealer()
+
+    return used_pref_pair_cnt
 
 
 if __name__ == '__main__':
@@ -105,7 +120,7 @@ if __name__ == '__main__':
     if args.start_epoch > 0:
         cp_path = cfg.model_path % args.start_epoch
         print_log(f'loading model from checkpoint: {cp_path}', log)
-        model_cp = torch.load(cp_path, map_location='cpu')
+        model_cp = torch.load(cp_path, map_location='cuda:0')
         model.load_state_dict(model_cp['model_dict'])
         if 'opt_dict' in model_cp:
             optimizer.load_state_dict(model_cp['opt_dict'])
@@ -114,12 +129,20 @@ if __name__ == '__main__':
 
     """ start training """
     model.set_device(device)
+    if args.start_epoch > 0:
+        for state in optimizer.state.values():
+            for k,v in state.items():
+                if isinstance(v,torch.Tensor):
+                    state[k] = v.to(device)
     model.train()
+    used_pairs_cnt_list = []
     for i in range(args.start_epoch, cfg.num_epochs):
-        train(i)
+        used_pair = train(i)
+        used_pairs_cnt_list.append(used_pair)
         """ save model """
         if cfg.model_save_freq > 0 and (i + 1) % cfg.model_save_freq == 0:
             cp_path = cfg.model_path % (i + 1)
             model_cp = {'model_dict': model.state_dict(), 'opt_dict': optimizer.state_dict(), 'scheduler_dict': scheduler.state_dict(), 'epoch': i + 1}
             torch.save(model_cp, cp_path)
 
+    print(used_pairs_cnt_list)

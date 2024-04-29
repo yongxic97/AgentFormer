@@ -5,10 +5,11 @@ from data.nuscenes_pred_split import get_nuscenes_pred_split
 from data.ethucy_split import get_ethucy_split
 from utils.utils import print_log, AverageMeter, isfile, print_log, AverageMeter, isfile, isfolder, find_unique_common_from_lists, load_list_from_folder, load_txt_file
 
+import csv
 
 """ Metrics """
 
-def compute_ADE(pred_arr, gt_arr):
+def compute_ADE(pred_arr, gt_arr, _):
     ade = 0.0
     for pred, gt in zip(pred_arr, gt_arr):
         diff = pred - np.expand_dims(gt, axis=0)        # samples x frames x 2
@@ -19,7 +20,7 @@ def compute_ADE(pred_arr, gt_arr):
     return ade
 
 
-def compute_FDE(pred_arr, gt_arr):
+def compute_FDE(pred_arr, gt_arr, _):
     fde = 0.0
     for pred, gt in zip(pred_arr, gt_arr):
         diff = pred - np.expand_dims(gt, axis=0)        # samples x frames x 2
@@ -29,6 +30,31 @@ def compute_FDE(pred_arr, gt_arr):
     fde /= len(pred_arr)
     return fde
 
+def compute_avg_vel(pred_arr, _, curr_pos_arr):
+    avgvel = 0.0
+    for pred, curr_pos in zip(pred_arr, curr_pos_arr):
+        # print("pred shape", pred.shape) # [num_sample, pred_step, 2]
+        curr_pos = np.tile(curr_pos, (20, 1)).reshape(20,1,2)
+        # print("curr pos shape", curr_pos.shape)
+        last_step = np.concatenate((curr_pos, pred[:, :-1, :]), axis=1)
+        vel_seq = pred - last_step
+        vel_avg = np.sqrt(vel_seq[:,:,0] ** 2 + vel_seq[:,:,1] ** 2).mean()
+        avgvel += vel_avg
+    avgvel /= len(pred_arr)
+
+    return avgvel
+
+def compute_gt_avg_vel(_, gt_arr, curr_pos_arr):
+    gt_avgvel = 0.0
+    for gt, curr_pos in zip(gt_arr, curr_pos_arr):
+        # print("pred shape", pred.shape) # [num_sample, pred_step, 2]
+        gt_last_step = np.concatenate((curr_pos.reshape(1,2), gt[ :-1, :]), axis=0)
+        gt_vel_seq = gt - gt_last_step
+        gt_vel_avg = np.sqrt(gt_vel_seq[:,0] ** 2 + gt_vel_seq[:,1] ** 2).mean()
+        gt_avgvel += gt_vel_avg
+    gt_avgvel /= len(gt_arr)
+
+    return gt_avgvel
 
 def align_gt(pred, gt):
     frame_from_data = pred[0, :, 0].astype('int64').tolist()
@@ -36,8 +62,9 @@ def align_gt(pred, gt):
     common_frames, index_list1, index_list2 = find_unique_common_from_lists(frame_from_gt, frame_from_data)
     assert len(common_frames) == len(frame_from_data)
     gt_new = gt[index_list1, 2:]
+    curr_pos = gt[index_list1[0]-1, 2:]
     pred_new = pred[:, index_list2, 2:]
-    return pred_new, gt_new
+    return pred_new, gt_new, curr_pos
 
 
 if __name__ == '__main__':
@@ -47,10 +74,16 @@ if __name__ == '__main__':
     parser.add_argument('--results_dir', default=None)
     parser.add_argument('--data', default='test')
     parser.add_argument('--log_file', default=None)
+    parser.add_argument('--user_z', default=None)
+    parser.add_argument('--epochs', default=None)
     args = parser.parse_args()
 
     dataset = args.dataset.lower()
     results_dir = args.results_dir
+    user_z = args.user_z
+    epochs = args.epochs
+    this_run_info = f"0424_0101_take2"
+    save_metrics_file = f'test/all_avgvel_ade_fde/{this_run_info}/{epochs}.csv'
     
     if dataset == 'nuscenes_pred':   # nuscenes
         data_root = f'datasets/nuscenes_pred'
@@ -72,7 +105,9 @@ if __name__ == '__main__':
 
     stats_func = {
         'ADE': compute_ADE,
-        'FDE': compute_FDE
+        'FDE': compute_FDE,
+        'avgvel': compute_avg_vel,
+        'gt_avgvel': compute_gt_avg_vel
     }
 
     stats_meter = {x: AverageMeter() for x in stats_func.keys()}
@@ -114,29 +149,44 @@ if __name__ == '__main__':
             frame_list = np.unique(all_traj[:, :, 0])
             agent_traj = []
             gt_traj = []
+            curr_poss = []
             for idx in id_list:
                 # GT traj
                 gt_idx = gt_raw[gt_raw[:, 1] == idx]                          # frames x 4
+                # print("gt_idx shape", gt_idx.shape)
                 # predicted traj
                 ind = np.unique(np.where(all_traj[:, :, 1] == idx)[1].tolist())
                 pred_idx = all_traj[:, ind, :]                                # sample x frames x 4
                 # filter data
-                pred_idx, gt_idx = align_gt(pred_idx, gt_idx)
+                # print("gt_idx before alignment", gt_idx.shape)
+                pred_idx, gt_idx, curr_pos = align_gt(pred_idx, gt_idx)
+                # print("gt_idx after alignment", gt_idx.shape)
                 # append
                 agent_traj.append(pred_idx)
                 gt_traj.append(gt_idx)
+                curr_poss.append(curr_pos)
 
             """compute stats"""
             for stats_name, meter in stats_meter.items():
                 func = stats_func[stats_name]
-                value = func(agent_traj, gt_traj)
+                value = func(agent_traj, gt_traj, curr_poss)
                 meter.update(value, n=len(agent_traj))
 
             stats_str = ' '.join([f'{x}: {y.val:.4f} ({y.avg:.4f})' for x, y in stats_meter.items()])
-            print_log(f'evaluating seq {seq_name:s}, forecasting frame {int(frame_list[0]):06d} to {int(frame_list[-1]):06d} {stats_str}', log_file)
+            print_log(f'eval seq {seq_name:s}, forecast fr. {int(frame_list[0]):06d} to {int(frame_list[-1]):06d} {stats_str}', log_file)
 
     print_log('-' * 30 + ' STATS ' + '-' * 30, log_file)
+    this_ade, this_fde, this_avgvel = 0.0, 0.0, 0.0
     for name, meter in stats_meter.items():
         print_log(f'{meter.count} {name}: {meter.avg:.4f}', log_file)
+        if name == 'ADE':            this_ade = meter.avg
+        if name == 'FDE':            this_fde = meter.avg
+        if name == 'avgvel':         this_avgvel = meter.avg
+
+    with open(save_metrics_file, "a", newline='') as f:
+        # file.write(f'{meter.avg:.4f},')
+        writer = csv.writer(f)
+        writer.writerow([this_ade, this_fde, this_avgvel])
+
     print_log('-' * 67, log_file)
     log_file.close()

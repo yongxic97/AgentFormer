@@ -13,6 +13,7 @@ from utils.utils import initialize_weights
 
 import csv
 import time
+import random
 
 
 def generate_ar_mask(sz, agent_num, agent_mask):
@@ -210,7 +211,9 @@ class FutureEncoder(nn.Module): # approximate posterior
             num_dist_params = self.nz
 
         if self.out_mlp_dim is None:
-            self.q_z_net = nn.Linear(self.model_dim, num_dist_params)
+            # self.q_z_net = nn.Linear(self.model_dim, num_dist_params)
+            self.q_z_net_param1 = nn.Linear(self.model_dim, self.nz)
+            self.q_z_net_param2 = nn.Linear(self.model_dim, self.nz)
         else:
             self.out_mlp = MLP(self.model_dim, self.out_mlp_dim, 'relu')
 
@@ -225,6 +228,9 @@ class FutureEncoder(nn.Module): # approximate posterior
         self.csv_timestamp = time.strftime(
             "-%d_%b_%Y_%H_%M_%S.csv", time.localtime()
         )
+
+        self.csv_newstamp = str(ctx['epochs']) + ".csv"
+        self.this_run_info = '0424_0101_take2'
 
     def forward(self, data, reparam=True):
         traj_in = []
@@ -249,6 +255,7 @@ class FutureEncoder(nn.Module): # approximate posterior
             else:
                 raise ValueError('unknown input_type!')
         traj_in = torch.cat(traj_in, dim=-1)
+        # print("original traj_in shape: ", traj_in.shape)
         tf_in = self.input_fc(traj_in.view(-1, traj_in.shape[-1])).view(-1, 1, self.model_dim)
         agent_enc_shuffle = data['agent_enc_shuffle'] if self.agent_enc_shuffle else None
         tf_in_pos = self.pos_encoder(tf_in, num_a=data['agent_num'], agent_enc_shuffle=agent_enc_shuffle)
@@ -287,23 +294,22 @@ class FutureEncoder(nn.Module): # approximate posterior
         if self.print_csv:
             alpha_np = q_z_params_alpha.detach().cpu().numpy()
             beta_np = q_z_params_beta.detach().cpu().numpy()
-            with open("./latent/alpha_np_"+self.csv_timestamp, "a", newline="") as f:
+            with open("./test/z_data/"+self.this_run_info+"/a_post/"+self.csv_newstamp, "a", newline="") as f:
                 writer = csv.writer(f)
                 writer.writerows(alpha_np)
             
-            with open("./latent/beta_np_"+self.csv_timestamp, "a", newline="") as f:
+            with open("./test/z_data/"+self.this_run_info+"/b_post/"+self.csv_newstamp, "a", newline="") as f:
                 writer = csv.writer(f)
                 writer.writerows(beta_np)  
 
-            with open("./latent/sampled_z_prior_"+self.csv_timestamp, "a", newline="") as f:
+            with open("./test/z_data/"+self.this_run_info+"/z_post/"+self.csv_newstamp, "a", newline="") as f:
                 writer = csv.writer(f)
                 writer.writerows(data['q_z_samp'].detach().cpu().numpy())  
 
 
-
 """ Future Decoder """
 class FutureDecoder(nn.Module):
-    def __init__(self, cfg, ctx, loss_cfg, **kwargs):
+    def __init__(self, cfg, ctx, loss_cfg, future_encoder, **kwargs):
         super().__init__()
         self.cfg = cfg
         self.ar_detach = ctx['ar_detach']
@@ -319,6 +325,7 @@ class FutureDecoder(nn.Module):
         self.nz = ctx['nz']
         self.z_type = ctx['z_type']
         print("FutureDecoder in ", self.z_type, " mode.")
+        self.print_csv = ctx['print_csv']   
         self.model_dim = ctx['tf_model_dim']
         self.ff_dim = ctx['tf_ff_dim']
         self.nhead = ctx['tf_nhead']
@@ -329,7 +336,11 @@ class FutureDecoder(nn.Module):
         self.agent_enc_shuffle = ctx['agent_enc_shuffle']
         self.learn_prior = ctx['learn_prior']
         self.twop = ctx['twop']
+        self.twop_get_z_strategy = ctx['twop_get_z_strategy']
+        self.twop_sample_z_from_hc_set = ctx['twop_sample_z_from_hc_set']
         self.user_give_z_at_test = ctx['user_give_z_at_test']
+        self.external_assign_z_at_test = ctx['external_assign_z_at_test']
+        self.user_z = ctx['user_z']
         self.loss_cfg = loss_cfg
         # networks
         in_dim = forecast_dim + len(self.input_type) * forecast_dim + self.nz
@@ -360,7 +371,61 @@ class FutureDecoder(nn.Module):
             # initialize_weights(self.p_z_net.modules())
             initialize_weights(self.p_z_net_param1.modules())
             initialize_weights(self.p_z_net_param2.modules())
+        self.copy_future_encoder = future_encoder
 
+        self.csv_newstamp = str(ctx['epochs']) + ".csv"
+        self.this_run_info = '0424_0101_take2'
+
+    def regen_posterior(self, data, pred_vel, pred_sn):
+        traj_in = []
+        for key in ['vel', 'scene_norm']:
+            if key == 'vel':
+                vel = pred_vel
+                # if self.vel_heading:
+                #     vel = rotation_2d_torch(vel, -data['heading'])[0]
+                traj_in.append(vel)
+            elif key == 'scene_norm':
+                traj_in.append(pred_sn)
+            else:
+                raise ValueError('unknown input_type!')
+        traj_in = torch.cat(traj_in, dim=-1)
+        # print("regenerated traj_in shape: ", traj_in.shape)
+        tf_in = self.copy_future_encoder.input_fc(traj_in.view(-1, traj_in.shape[-1])).view(-1, 1, self.copy_future_encoder.model_dim)
+        agent_enc_shuffle = data['agent_enc_shuffle'] if self.copy_future_encoder.agent_enc_shuffle else None
+        tf_in_pos = self.copy_future_encoder.pos_encoder(tf_in, num_a=data['agent_num'], agent_enc_shuffle=agent_enc_shuffle)
+
+        mem_agent_mask = data['agent_mask'].clone()
+        tgt_agent_mask = data['agent_mask'].clone()
+        mem_mask = generate_mask(tf_in.shape[0], data['context_enc'].shape[0], data['agent_num'], mem_agent_mask).to(tf_in.device)
+        tgt_mask = generate_mask(tf_in.shape[0], tf_in.shape[0], data['agent_num'], tgt_agent_mask).to(tf_in.device)
+        
+        tf_out, _ = self.copy_future_encoder.tf_decoder(tf_in_pos, data['context_enc'], memory_mask=mem_mask, tgt_mask=tgt_mask, num_agent=data['agent_num'])
+        tf_out = tf_out.view(traj_in.shape[0], -1, self.copy_future_encoder.model_dim)
+
+        if self.copy_future_encoder.pooling == 'mean':
+            h = torch.mean(tf_out, dim=0)
+        else:
+            h = torch.max(tf_out, dim=0)[0]
+        if self.copy_future_encoder.out_mlp_dim is not None:
+            h = self.copy_future_encoder.out_mlp(h)
+        # q_z_params = self.q_z_net(h) # This implies mu and var are correlated for Gaussian.
+
+        if self.copy_future_encoder.z_type == 'gaussian':
+            q_z_params_mu = self.copy_future_encoder.q_z_net_param1(h)
+            q_z_params_var = self.copy_future_encoder.q_z_net_param2(h)
+            q_z_params = torch.cat([q_z_params_mu, q_z_params_var], dim=-1)
+            re_dist = Normal(params=q_z_params)
+        elif self.copy_future_encoder.z_type == 'beta':
+            q_z_params_alpha = F.elu(self.copy_future_encoder.q_z_net_param1(h)) + 2.0
+            q_z_params_beta = F.elu(self.copy_future_encoder.q_z_net_param2(h)) + 2.0
+            q_z_params = torch.cat([q_z_params_alpha, q_z_params_beta], dim=-1)
+            re_dist = Beta(params=q_z_params)
+        else:
+            q_z_params = self.copy_future_encoder.q_z_net(h)
+            re_dist = Categorical(logits=q_z_params, temp=self.copy_future_encoder.z_tau_annealer.val())
+
+        return re_dist
+        
     def decode_traj_ar(self, data, mode, context, pre_motion, pre_vel, pre_motion_scene_norm, z, sample_num, need_weights=False, gen_pref=-1):
         agent_num = data['agent_num']
         if self.pred_type == 'vel':
@@ -448,7 +513,7 @@ class FutureDecoder(nn.Module):
             data[f'{mode}_dec_motion'] = dec_motion
             if need_weights:
                 data['attn_weights'] = attn_weights
-        else:
+        else: # For generating predictions (and maybe new z's) for preference loss purpose.
             data['oracle_eval_seq_out'][gen_pref] = seq_out
 
             if self.pred_type == 'vel':
@@ -470,6 +535,20 @@ class FutureDecoder(nn.Module):
             
             # print("eval dec motion shape: ", dec_motion.shape)
 
+            # re-generate posterior and get z from that.
+            if self.twop_get_z_strategy != 'z_gt_post_sample':
+                pred_vel = torch.cumsum(seq_out, dim=0) + pre_motion[[-1]]
+                pred_sn = seq_out + data['scene_orig']
+
+                z_post_re = self.regen_posterior(data, pred_vel, pred_sn)
+                if self.twop_get_z_strategy == 'z_re_post_sample':
+                    data['oracle_eval_z'][gen_pref] = z_post_re.rsample()
+                elif self.twop_get_z_strategy == 'z_re_post_mode':
+                    data['oracle_eval_z'][gen_pref] = z_post_re.mode()
+                elif self.twop_get_z_strategy == 'z_re_post_mean':
+                    data['oracle_eval_z'][gen_pref] = z_post_re.mean()
+                else:
+                    raise NotImplementedError("[FutureDecoder] Unknown twop getting z strategy.")
 
     def decode_traj_batch(self, data, mode, context, pre_motion, pre_vel, pre_motion_scene_norm, z, sample_num):
         raise NotImplementedError
@@ -486,9 +565,9 @@ class FutureDecoder(nn.Module):
             h = data['agent_context'].repeat_interleave(sample_num, dim=0)
             # p_z_params = self.p_z_net(h)
             # incompatible with categorical
-            p_z_params_1 = self.p_z_net_param1(h)
-            p_z_params_2 = self.p_z_net_param2(h)
-            p_z_params = torch.cat([p_z_params_1, p_z_params_2], dim=-1)
+            p_z_params_1 = self.p_z_net_param1(h)                         # [bs, nz]
+            p_z_params_2 = self.p_z_net_param2(h)                         # [bs, nz]
+            p_z_params = torch.cat([p_z_params_1, p_z_params_2], dim=-1)  # [bs, nz * 2]
             if self.z_type == 'gaussian':
                 data[prior_key] = Normal(params=p_z_params)
             elif self.z_type == 'beta':
@@ -509,6 +588,21 @@ class FutureDecoder(nn.Module):
                 z = data['q_z_samp'] if mode == 'train' else data['q_z_dist'].mode()
             elif mode == 'infer':
                 z = data['p_z_dist_infer'].sample()
+
+                if self.print_csv:
+                    alpha_np = (F.elu(p_z_params_1)+2.0).detach().cpu().numpy()
+                    beta_np  = (F.elu(p_z_params_2)+2.0).detach().cpu().numpy()
+                    with open("./test/z_data/"+self.this_run_info+"/a_prior/"+self.csv_newstamp, "a", newline="") as f:
+                        writer = csv.writer(f)
+                        writer.writerows(alpha_np)
+                    
+                    with open("./test/z_data/"+self.this_run_info+"/b_prior/"+self.csv_newstamp, "a", newline="") as f:
+                        writer = csv.writer(f)
+                        writer.writerows(beta_np)  
+
+                    with open("./test/z_data/"+self.this_run_info+"/z_prior/"+self.csv_newstamp, "a", newline="") as f:
+                        writer = csv.writer(f)
+                        writer.writerows(z.detach().cpu().numpy())  
             else:
                 raise ValueError('Unknown Mode!')
         elif z is None and self.user_give_z_at_test:
@@ -518,8 +612,15 @@ class FutureDecoder(nn.Module):
                 z = data['q_z_dist'].mode()
             elif mode == 'infer':
                 z = data['p_z_dist_infer'].sample()
-                z[:, 0:1] =  0.9    # ADE
-                z[:, 24:25] = 0.9    # FDE
+                threshold = 0.95
+                # z[:,0:1][z[:,0:1]<threshold] = threshold      # ADE
+                if self.external_assign_z_at_test:
+                    z[:,0:1] = self.user_z
+                else:
+                    z[:,0:1] = 0.3
+                # z[:, 24:25]= 0.1    # FDE
+                # z[:,0:5] = z[:,10:15] = 0.9
+                # z[:,5:10] = z[:,15:20] = 0.6
                 # z[:, 12] = 0.1
                 # z[:, 17] = 0.1
                 # z[:,20:] = 0.4
@@ -541,12 +642,22 @@ class FutureDecoder(nn.Module):
             data['oracle_eval_dec_motion'] = defaultdict(lambda: None)
             data['oracle_eval_attn_weights'] = defaultdict(lambda: None)
 
+            if self.twop_sample_z_from_hc_set:
+                z_hc_set = [0.1, 0.3, 0.5, 0.7, 0.9]
+                z_sampled = []
+                z_sampled.append(random.choice(z_hc_set))
+                z_hc_set.remove(z_sampled[0])
+                z_sampled.append(random.choice(z_hc_set))
             for i in range(int(self.loss_cfg['op']['k'])):
                 # print(f"Generating extra samples for twop... Index: {i}")
-                z_twop = data['q_z_dist'].rsample() # at inference time, sample from approximate posterior
-                data['oracle_eval_z'][i] = z_twop
+                z_twop = data['q_z_dist'].rsample() # at inference time, sample from approximate posterior                
+                # [bs, nz]
+                if self.twop_sample_z_from_hc_set:
+                    z_twop = z_twop.clone().detach().requires_grad_(False).to(z_twop.device)
+                    z_twop[:, 0:1] = torch.tensor(z_sampled[i])
+                if self.twop_get_z_strategy == 'z_gt_post_sample':
+                    data['oracle_eval_z'][i] = z_twop 
                 self.decode_traj_ar(data, mode, context, pre_motion, pre_vel, pre_motion_scene_norm, z_twop, sample_num, need_weights=need_weights, gen_pref=i)
-        #########################
 
 
 """ AgentFormer """
@@ -591,8 +702,13 @@ class AgentFormer(nn.Module):
             'learn_prior': cfg.get('learn_prior', False),
             'use_map': cfg.get('use_map', False),
             'twop': cfg.get('twop', False),
+            'twop_sample_z_from_hc_set': cfg.get('twop_sample_z_from_hc_set', False),
+            'twop_get_z_strategy': cfg.get('twop_get_z_strategy', 'z_gt_post_sample'),
             'print_csv': cfg.get('print_csv', False),
             'user_give_z_at_test': cfg.get('user_give_z_at_test', False),
+            'external_assign_z_at_test': cfg.get('external_assign_z_at_test', False),
+            'user_z': cfg.get('user_z', 0.0),
+            'epochs': cfg.get('epochs', 0)
         }
         print("AgentFormer in ", self.ctx['z_type'], " mode.")
         if self.ctx['user_give_z_at_test']: print("Using user supplied z at test time.")
@@ -621,7 +737,7 @@ class AgentFormer(nn.Module):
         # models
         self.context_encoder = ContextEncoder(cfg.context_encoder, self.ctx)
         self.future_encoder = FutureEncoder(cfg.future_encoder, self.ctx)
-        self.future_decoder = FutureDecoder(cfg.future_decoder, self.ctx, self.loss_cfg)
+        self.future_decoder = FutureDecoder(cfg.future_decoder, self.ctx, self.loss_cfg, self.future_encoder)
         
     def set_device(self, device):
         self.device = device
@@ -733,13 +849,31 @@ class AgentFormer(nn.Module):
         self.future_decoder(self.data, mode=mode, sample_num=sample_num, autoregress=True, need_weights=need_weights)
         return self.data[f'{mode}_dec_motion'], self.data
 
-    def compute_loss(self):
+    def compute_original_loss(self):
         total_loss = 0
         loss_dict = {}
         loss_unweighted_dict = {}
         for loss_name in self.loss_names:
+            if loss_name is 'op':
+                continue
             loss, loss_unweighted = loss_func[loss_name](self.data, self.loss_cfg[loss_name])
             total_loss += loss
             loss_dict[loss_name] = loss.item()
             loss_unweighted_dict[loss_name] = loss_unweighted.item()
         return total_loss, loss_dict, loss_unweighted_dict
+
+    def compute_loss(self):
+        total_loss = 0
+        loss_dict = {}
+        loss_unweighted_dict = {}
+        for loss_name in self.loss_names:
+            if loss_name is 'op':
+                if not self.ctx['twop']:
+                    continue
+                loss, loss_unweighted, used = loss_func[loss_name](self.data, self.loss_cfg[loss_name])
+            else:
+                loss, loss_unweighted = loss_func[loss_name](self.data, self.loss_cfg[loss_name])
+            total_loss += loss
+            loss_dict[loss_name] = loss.item()
+            loss_unweighted_dict[loss_name] = loss_unweighted.item()
+        return total_loss, loss_dict, loss_unweighted_dict, used
