@@ -230,7 +230,7 @@ class FutureEncoder(nn.Module): # approximate posterior
         )
 
         self.csv_newstamp = str(ctx['epochs']) + ".csv"
-        self.this_run_info = '0424_0101_take2'
+        self.this_run_info = '0424_0101_take3'
 
     def forward(self, data, reparam=True):
         traj_in = []
@@ -374,7 +374,7 @@ class FutureDecoder(nn.Module):
         self.copy_future_encoder = future_encoder
 
         self.csv_newstamp = str(ctx['epochs']) + ".csv"
-        self.this_run_info = '0424_0101_take2'
+        self.this_run_info = '0424_0101_take3'
 
     def regen_posterior(self, data, pred_vel, pred_sn):
         traj_in = []
