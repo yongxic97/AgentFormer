@@ -54,10 +54,14 @@ def oracle_prefers_slower_avg_vel(z, pred, gt, pre_motion, mask=False):
             des2 = vel_avg
     prefs = torch.zeros(bs)
     for i in range(bs):
+        z0 = z[0][i,0]
+        z1 = z[1][i,0]
         if des1[i] < des2[i]: # smaller is 'better'
-            prefs[i] = 0.01
+            # prefs[i] = 0.01
+            prefs[i] = z0/(z0+z1)
         elif des1[i] > des2[i]:
-            prefs[i] = 0.99
+            # prefs[i] = 0.99
+            prefs[i] = z1/(z0+z1)
         else:
             prefs[i] = 0.5
 
@@ -79,7 +83,7 @@ def oracle_prefers_slower_avg_vel(z, pred, gt, pre_motion, mask=False):
 
         ## Percentage mask
         # Only consider those prediction pairs (y1e, y2e) that |(yie-y_gt) / y_gt| > 5%
-        percentage_threshold = 0.05
+        percentage_threshold = 0.1
         for i in range(bs):
             if abs(des1[i] - gt_vel[i]) / gt_vel[i] < percentage_threshold \
                 or abs(des2[i] - gt_vel[i]) / gt_vel[i] < percentage_threshold:
@@ -178,7 +182,9 @@ def compute_oracle_preference_loss(data, cfg):
         # pref_all = torch.stack([pref_ade, pref_fde], dim=0).to(z_tensor.device) # [2, bs]
         pref_all = torch.stack(prefs_list, dim=0).to(z_tensor.device)               # [used_oracles, bs]
         mask_all = torch.stack(mask_list, dim=0).to(z_tensor.device)                # [used_oracles, bs]
-        log_z_sm = torch.log(nn.functional.softmax(z_tensor, dim=0))                # [z_dim, bs, nz]
+        # log_z_sm = torch.log(nn.functional.softmax(z_tensor, dim=0))                # [z_dim, bs, nz]
+        z_tensor_norm = torch.stack((z_tensor[0]/(z_tensor[0]+z_tensor[1]), z_tensor[1]/(z_tensor[0]+z_tensor[1])))
+        log_z_sm = torch.log(z_tensor_norm)
 
         assigned_dims = [0] # hardcoded for now
 
