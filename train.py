@@ -57,6 +57,12 @@ def train(epoch):
             """ optimize """
             optimizer.zero_grad()
             total_loss.backward()
+
+                # Access gradients of specific tensors (if needed)
+            for name, param in model.named_parameters():
+                if param.grad is not None:
+                    print(f'Tensor: {name}, Gradients: {param.grad}')
+
             optimizer.step()
 
             train_loss_meter['total_loss'].update(total_loss.item())
