@@ -64,7 +64,7 @@ loss_cfg:
     weight: 1.0
     k: 20
   op: # oracle preference
-    weight: 16.0
+    weight: 2.0
     k: 2 # use how many samples for comparison
     oracles:
       ade                     : false
@@ -94,10 +94,12 @@ twop_get_z_strategy          : 'z_gt_post_sample'
 #       `z_re_post_sample`
 #       `z_re_post_mean`
 #       `z_re_post_mode`
-user_give_z_at_test          : true
-print_csv                    : true
+user_give_z_at_test          : false
+print_csv                    : false
 
-pretrain                     : false
-add_loss_eps                 : 10 # After how many epochs to add the preference loss
+pretrain                     : true
+add_loss_eps                 : 20 # After how many epochs to add the preference loss
 
-external_assign_z_at_test    : true
+external_assign_z_at_test    : false
+
+show_grad                    : true
