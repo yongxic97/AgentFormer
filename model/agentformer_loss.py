@@ -67,9 +67,13 @@ def oracle_prefers_slower_avg_vel(z, pred, gt, pre_motion, mask=False):
         
         ## differentiable 'soft' preference
         scale_diff = 10.0
-        diff_des = (des1[i] - des2[i]) * scale_diff
         m = nn.Sigmoid()
-        prefs[i] = m(diff_des) * (z1-z0) + z0
+        if (z1>z0):
+            diff_des = (des1[i] - des2[i]) * scale_diff
+            prefs[i] = m(diff_des) * (z1-z0) + z0
+        else:
+            diff_des = (des2[i] - des1[i]) * scale_diff
+            prefs[i] = m(diff_des) * (z0-z1) + z1
 
     vel_mask = torch.ones(bs) # All ones. This means no mask.
     if mask:

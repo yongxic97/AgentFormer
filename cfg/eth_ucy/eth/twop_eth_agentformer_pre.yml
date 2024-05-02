@@ -94,12 +94,12 @@ twop_get_z_strategy          : 'z_gt_post_sample'
 #       `z_re_post_sample`
 #       `z_re_post_mean`
 #       `z_re_post_mode`
-user_give_z_at_test          : false
-print_csv                    : false
+user_give_z_at_test          : true
+print_csv                    : true
 
-pretrain                     : true
+pretrain                     : false
 add_loss_eps                 : 20 # After how many epochs to add the preference loss
 
-external_assign_z_at_test    : false
+external_assign_z_at_test    : true
 
 show_grad                    : true

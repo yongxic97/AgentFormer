@@ -4,7 +4,7 @@ z_step=4
 z_end=9
 len=10
 eps_start=2
-eps_end=100
+eps_end=38
 
 for ((i=eps_start;i<=eps_end;i+=2)); do
     for ((z=z_begin;z<=z_end;z+=z_step)); do
