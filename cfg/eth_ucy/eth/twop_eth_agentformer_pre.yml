@@ -49,7 +49,7 @@ future_encoder:
 
 nz                           : 2
 sample_k                     : 20
-learn_prior                  : true
+learn_prior                  : false
 
 # ------------------- Training Parameters -------------------------
 
@@ -64,7 +64,7 @@ loss_cfg:
     weight: 1.0
     k: 20
   op: # oracle preference
-    weight: 2.0
+    weight: 1.0
     k: 2 # use how many samples for comparison
     oracles:
       ade                     : false
@@ -88,18 +88,18 @@ model_save_freq              : 2
 # ---- Training with oracle preference ----
 
 twop                         : true
-twop_sample_z_from_hc_set    : true
+twop_sample_z_from_hc_set    : false
 twop_get_z_strategy          : 'z_gt_post_sample'
 #       `z_gt_post_sample`
 #       `z_re_post_sample`
 #       `z_re_post_mean`
 #       `z_re_post_mode`
-user_give_z_at_test          : true
-print_csv                    : true
+user_give_z_at_test          : false
+print_csv                    : false
 
 pretrain                     : false
 add_loss_eps                 : 20 # After how many epochs to add the preference loss
 
 external_assign_z_at_test    : true
 
-show_grad                    : true
+z_type                       : 'beta'

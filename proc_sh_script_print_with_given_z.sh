@@ -3,8 +3,8 @@ z_begin=1
 z_step=4
 z_end=9
 len=10
-eps_start=2
-eps_end=38
+eps_start=74
+eps_end=94
 
 for ((i=eps_start;i<=eps_end;i+=2)); do
     for ((z=z_begin;z<=z_end;z+=z_step)); do

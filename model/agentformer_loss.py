@@ -71,9 +71,13 @@ def oracle_prefers_slower_avg_vel(z, pred, gt, pre_motion, mask=False):
         if (z1>z0):
             diff_des = (des1[i] - des2[i]) * scale_diff
             prefs[i] = m(diff_des) * (z1-z0) + z0
+            # prefs[i] = torch.tanh(diff_des)
         else:
             diff_des = (des2[i] - des1[i]) * scale_diff
             prefs[i] = m(diff_des) * (z0-z1) + z1
+            # prefs[i] = torch.tanh(diff_des)
+        # print(diff_des)
+        # print("This preference", prefs[i])
 
     vel_mask = torch.ones(bs) # All ones. This means no mask.
     if mask:

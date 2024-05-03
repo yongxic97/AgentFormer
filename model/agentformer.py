@@ -230,7 +230,7 @@ class FutureEncoder(nn.Module): # approximate posterior
         )
 
         self.csv_newstamp = str(ctx['epochs']) + ".csv"
-        self.this_run_info = '0502_0101_take1'
+        self.this_run_info = '0502_0102_take1'
 
     def forward(self, data, reparam=True):
         traj_in = []
@@ -374,7 +374,7 @@ class FutureDecoder(nn.Module):
         self.copy_future_encoder = future_encoder
 
         self.csv_newstamp = str(ctx['epochs']) + ".csv"
-        self.this_run_info = '0502_0101_take1'
+        self.this_run_info = '0502_0102_take1'
 
     def regen_posterior(self, data, pred_vel, pred_sn):
         traj_in = []
@@ -579,7 +579,7 @@ class FutureDecoder(nn.Module):
             if self.z_type == 'gaussian':
                 data[prior_key] = Normal(mu=torch.zeros(pre_motion.shape[1], self.nz).to(pre_motion.device), logvar=torch.zeros(pre_motion.shape[1], self.nz).to(pre_motion.device))
             elif self.z_type == 'beta':
-                data[prior_key] = Beta(alpha=100*torch.ones(pre_motion.shape[1], self.nz).to(pre_motion.device), beta=torch.ones(pre_motion.shape[1], self.nz).to(pre_motion.device))
+                data[prior_key] = Beta(alpha=10*torch.ones(pre_motion.shape[1], self.nz).to(pre_motion.device), beta=10*torch.ones(pre_motion.shape[1], self.nz).to(pre_motion.device))
             else:
                 data[prior_key] = Categorical(logits=torch.zeros(pre_motion.shape[1], self.nz).to(pre_motion.device))
 
@@ -650,7 +650,8 @@ class FutureDecoder(nn.Module):
                 z_sampled.append(random.choice(z_hc_set))
             for i in range(int(self.loss_cfg['op']['k'])):
                 # print(f"Generating extra samples for twop... Index: {i}")
-                z_twop = data['q_z_dist'].rsample() # at inference time, sample from approximate posterior                
+                # z_twop = data['q_z_dist'].rsample() # as if at inference time, sample from approximate posterior                
+                z_twop = data['p_z_dist'].rsample()
                 # [bs, nz]
                 if self.twop_sample_z_from_hc_set:
                     z_twop = z_twop.clone().detach().requires_grad_(False).to(z_twop.device)
