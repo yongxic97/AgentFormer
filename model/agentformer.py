@@ -161,7 +161,9 @@ class ContextEncoder(nn.Module):
         
         src_agent_mask = data['agent_mask'].clone()
         src_mask = generate_mask(tf_in.shape[0], tf_in.shape[0], data['agent_num'], src_agent_mask).to(tf_in.device)
-        
+        # print("tf in", traj_in)
+        # print("agent num: ", data['agent_num'])
+        # print("tf_in_pos", tf_in_pos)
         data['context_enc'] = self.tf_encoder(tf_in_pos, mask=src_mask, num_agent=data['agent_num'])
         
         context_rs = data['context_enc'].view(-1, data['agent_num'], self.model_dim)
@@ -494,7 +496,7 @@ class FutureDecoder(nn.Module):
 
         seq_out = seq_out.view(-1, agent_num * sample_num, seq_out.shape[-1])
 
-        if gen_pref == -1:
+        if gen_pref == -1:  ## This is for computation of original reconstruction loss.
             data[f'{mode}_seq_out'] = seq_out
 
             if self.pred_type == 'vel':
@@ -537,6 +539,7 @@ class FutureDecoder(nn.Module):
 
             # re-generate posterior and get z from that.
             if self.twop_get_z_strategy != 'z_gt_post_sample':
+                print("Re-generating posterior and getting z from that.")
                 pred_vel = torch.cumsum(seq_out, dim=0) + pre_motion[[-1]]
                 pred_sn = seq_out + data['scene_orig']
 
@@ -635,7 +638,7 @@ class FutureDecoder(nn.Module):
 
         #########################
         # Now for clarity of code, we sample extra loss_cfg.op.k samples for twop. I don't think not using the one above would affect much.
-        if self.twop and sample_num==1: # `sample_num=1` is to guarantee that for sampling_loss forward pass, this is not executed.
+        if self.twop and mode=='train': # `sample_num=1` is to guarantee that for sampling_loss forward pass, this is not executed.
             
             data['oracle_eval_z'] = defaultdict(lambda: None)
             data['oracle_eval_seq_out'] = defaultdict(lambda: None)
@@ -648,17 +651,19 @@ class FutureDecoder(nn.Module):
                 z_sampled.append(random.choice(z_hc_set))
                 z_hc_set.remove(z_sampled[0])
                 z_sampled.append(random.choice(z_hc_set))
-            for i in range(int(self.loss_cfg['op']['k'])):
+            # for i in range(int(self.loss_cfg['op']['k'])):
+            for i in range(2):
                 # print(f"Generating extra samples for twop... Index: {i}")
                 # z_twop = data['q_z_dist'].rsample() # as if at inference time, sample from approximate posterior                
-                z_twop = data['p_z_dist'].rsample()
+                z_twop = data['p_z_dist'].rsample()   # prior makes more sense?
                 # [bs, nz]
                 if self.twop_sample_z_from_hc_set:
                     z_twop = z_twop.clone().detach().requires_grad_(False).to(z_twop.device)
                     z_twop[:, 0:1] = torch.tensor(z_sampled[i])
                 if self.twop_get_z_strategy == 'z_gt_post_sample':
-                    data['oracle_eval_z'][i] = z_twop 
-                self.decode_traj_ar(data, mode, context, pre_motion, pre_vel, pre_motion_scene_norm, z_twop, sample_num, need_weights=need_weights, gen_pref=i)
+                    # print('twop size', z_twop.shape)
+                    data['oracle_eval_z'][i] = z_twop
+                self.decode_traj_ar(data, mode, context, pre_motion, pre_vel, pre_motion_scene_norm, z_twop, sample_num, need_weights=False, gen_pref=i)
 
 
 """ AgentFormer """
@@ -835,7 +840,7 @@ class AgentFormer(nn.Module):
         self.context_encoder(self.data)
         self.future_encoder(self.data)
         self.future_decoder(self.data, mode='train', autoregress=self.ar_train)
-        if self.compute_sample:
+        if self.compute_sample:  # also concerns sample loss
             self.inference(sample_num=self.loss_cfg['sample']['k'])
         return self.data
 
@@ -867,6 +872,7 @@ class AgentFormer(nn.Module):
         total_loss = 0
         loss_dict = {}
         loss_unweighted_dict = {}
+        used = -1
         for loss_name in self.loss_names:
             if loss_name is 'op':
                 if not self.ctx['twop']:

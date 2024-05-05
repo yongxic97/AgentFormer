@@ -174,6 +174,13 @@ def agent_aware_attention(query: Tensor,
                 k_self = linear(key, _w, _b)
 
         else:
+            print("KQV shapes: ")
+            print(key.shape, value.shape, query.shape)
+            print(torch.equal(key, value))
+            print(torch.equal(query, key))
+            print(torch.equal(query, value))
+            print("Uneuqal query, key, value is not supported.")
+            print("Weird because this is self-attention...")
             raise NotImplementedError
 
     else:

@@ -39,14 +39,19 @@ def oracle_prefers_smaller_de_batch(z, pred, gt, compute_DE):
 
 def oracle_prefers_slower_avg_vel(z, pred, gt, pre_motion, mask=False):
     des1, des2 = None, None
+    pre_motion_copy = pre_motion.clone()
     # pred: [z_dim, bs, fut_len, 2]; pre_motion: [fut_len, bs, 2]
-    pre_motion = pre_motion.permute(1,0,2) # [bs, fut_len, 2]
+    pre_motion_copy = pre_motion_copy.permute(1,0,2) # [bs, fut_len, 2]
     bs = pred[0].shape[0] # get batch size
 
     for i in range(len(z)):
-        vel_seqs = pred[i] - torch.cat([pre_motion[:,-1,:].unsqueeze(1), pred[i][:, :-1, :]],dim=1)
+        # print("pre_motion_copy[:,-1,:].shape", pre_motion_copy[:,-1,:].shape)
+        # print(i)
+        vel_seqs = pred[i] - torch.cat([pre_motion_copy[:,-1,:].unsqueeze(1), pred[i][:, :-1, :]],dim=1)
         vel_avg = torch.sqrt(vel_seqs[:,:,0].pow(2) + vel_seqs[:,:,1].pow(2)).mean(dim=1) # [bs]
-
+        # print(vel_avg)
+        # print("vel avg shape", vel_avg.shape)
+        # vel_avg = torch.zeros(bs)
         # print("vel_avg", vel_avg.shape)
         if i == 0:
             des1 = vel_avg
@@ -80,10 +85,11 @@ def oracle_prefers_slower_avg_vel(z, pred, gt, pre_motion, mask=False):
         # print("This preference", prefs[i])
 
     vel_mask = torch.ones(bs) # All ones. This means no mask.
+    used_cnt = -1
     if mask:
         used = torch.ones(bs)
         # gt_vel = 0.3525 # ground truth for eth
-        gt_vel_seq = gt - torch.cat([pre_motion[:,-1,:].unsqueeze(1), gt[:, :-1, :]],dim=1)
+        gt_vel_seq = gt - torch.cat([pre_motion_copy[:,-1,:].unsqueeze(1), gt[:, :-1, :]],dim=1)
         gt_vel = torch.sqrt(gt_vel_seq[:,:,0].pow(2) + gt_vel_seq[:,:,1].pow(2)).mean(dim=1) # [bs]
         #TODO: change to grount truth of datapoint
         ## Comparative mask
@@ -195,6 +201,7 @@ def compute_oracle_preference_loss(data, cfg):
         z_tensor = torch.stack((z[0], z[1]))                                        # [z_dim, bs, nz]
         # pref_all = torch.stack([pref_ade, pref_fde], dim=0).to(z_tensor.device) # [2, bs]
         pref_all = torch.stack(prefs_list, dim=0).to(z_tensor.device)               # [used_oracles, bs]
+        # print(pref_all.shape)
         mask_all = torch.stack(mask_list, dim=0).to(z_tensor.device)                # [used_oracles, bs]
         # log_z_sm = torch.log(nn.functional.softmax(z_tensor, dim=0))                # [z_dim, bs, nz]
         # z_tensor_norm = torch.stack((z_tensor[0]/(z_tensor[0]+z_tensor[1]), z_tensor[1]/(z_tensor[0]+z_tensor[1])))
@@ -204,13 +211,16 @@ def compute_oracle_preference_loss(data, cfg):
 
         assigned_dims = [0] # hardcoded for now
 
-        loss_unweighted = 0
+        loss_unweighted = torch.tensor(0.0).to(z_tensor.device)
         N_times = 1 # For how many dimensions does each oracle control.
         for i in range(used_oracles):
             for j in range(N_times):
-                this_loss = torch.sum(log_z_sm[1, :, assigned_dims[i] * N_times + j] * pref_all[i,:]) * mask_all[i,:] + \
+                # print((log_z_sm[1, :, assigned_dims[i] * N_times + j] * pref_all[i,:]).shape)
+                # print(mask_all[i,:].shape)
+                this_loss = torch.sum(log_z_sm[1, :, assigned_dims[i] * N_times + j] * pref_all[i,:] * mask_all[i,:]) + \
                             torch.sum(log_z_sm[0, :, assigned_dims[i] * N_times + j] * (1-pref_all[i,:]) * mask_all[i,:])
-                loss_unweighted += this_loss
+                if not torch.isnan(this_loss):
+                    loss_unweighted += this_loss
         loss_unweighted = -loss_unweighted / (used_oracles * N_times)
     else: # old method
         z_tensor = torch.stack((z[0], z[1]))                                    # [z_dim, bs, nz]
@@ -242,10 +252,10 @@ def compute_oracle_preference_loss(data, cfg):
                 loss_unweighted += this_loss
         loss_unweighted = -loss_unweighted / (used_oracles * N_times)
 
-    if cfg.get('normalize', True):
-        loss_unweighted = loss_unweighted.mean()
-    else:
-        loss_unweighted = loss_unweighted.sum()
+    # if cfg.get('normalize', True):
+    #     loss_unweighted = loss_unweighted.mean()
+    # else:
+    #     loss_unweighted = loss_unweighted.sum()
     loss = loss_unweighted * cfg['weight']
     return loss, loss_unweighted, used
 

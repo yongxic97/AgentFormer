@@ -14,13 +14,17 @@ class Normal:
             self.mu = mu
             self.logvar = logvar
         self.sigma = torch.exp(0.5 * self.logvar)
+        # self.dist = td.Normal(self.mu, self.sigma)
 
     def rsample(self):
         eps = torch.randn_like(self.sigma)
         return self.mu + eps * self.sigma
+        # print('rsample of gaussian')
+        # return self.dist.rsample()
 
     def sample(self):
         return self.rsample()
+        # return self.dist.sample()
 
     def kl(self, p=None):
         """ compute KL(q||p) """

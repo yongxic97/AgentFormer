@@ -100,6 +100,6 @@ print_csv                    : false
 pretrain                     : false
 add_loss_eps                 : 20 # After how many epochs to add the preference loss
 
-external_assign_z_at_test    : true
+external_assign_z_at_test    : false
 
-z_type                       : 'beta'
+z_type                       : 'gaussian'
