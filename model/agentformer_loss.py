@@ -38,7 +38,7 @@ def oracle_prefers_smaller_de_batch(z, pred, gt, compute_DE):
     pass
 
 def oracle_prefers_slower_avg_vel(z, pred, gt, pre_motion, mask=False):
-    des1, des2 = None, None
+    des0, des1 = None, None
     pre_motion_copy = pre_motion.clone()
     # pred: [z_dim, bs, fut_len, 2]; pre_motion: [fut_len, bs, 2]
     pre_motion_copy = pre_motion_copy.permute(1,0,2) # [bs, fut_len, 2]
@@ -54,9 +54,9 @@ def oracle_prefers_slower_avg_vel(z, pred, gt, pre_motion, mask=False):
         # vel_avg = torch.zeros(bs)
         # print("vel_avg", vel_avg.shape)
         if i == 0:
-            des1 = vel_avg
+            des0 = vel_avg
         else:
-            des2 = vel_avg
+            des1 = vel_avg
     prefs = torch.zeros(bs)
     for i in range(bs):
         z0 = z[0][i,0]
@@ -74,11 +74,11 @@ def oracle_prefers_slower_avg_vel(z, pred, gt, pre_motion, mask=False):
         scale_diff = 10.0
         m = nn.Sigmoid()
         if (z1>z0):
-            diff_des = (des1[i] - des2[i]) * scale_diff
+            diff_des = (des0[i] - des1[i]) * scale_diff
             prefs[i] = m(diff_des) * (z1-z0) + z0
             # prefs[i] = torch.tanh(diff_des)
         else:
-            diff_des = (des2[i] - des1[i]) * scale_diff
+            diff_des = (des1[i] - des0[i]) * scale_diff
             prefs[i] = m(diff_des) * (z0-z1) + z1
             # prefs[i] = torch.tanh(diff_des)
         # print(diff_des)
@@ -105,8 +105,8 @@ def oracle_prefers_slower_avg_vel(z, pred, gt, pre_motion, mask=False):
         # Only consider those prediction pairs (y1e, y2e) that |(yie-y_gt) / y_gt| > 5%
         percentage_threshold = 0.3
         for i in range(bs):
-            if abs(des1[i] - gt_vel[i]) / gt_vel[i] < percentage_threshold \
-                or abs(des2[i] - gt_vel[i]) / gt_vel[i] < percentage_threshold:
+            if abs(des0[i] - gt_vel[i]) / gt_vel[i] < percentage_threshold \
+                or abs(des1[i] - gt_vel[i]) / gt_vel[i] < percentage_threshold:
                 vel_mask[i] = 0
                 used[i] = 0
         
@@ -213,12 +213,17 @@ def compute_oracle_preference_loss(data, cfg):
 
         loss_unweighted = torch.tensor(0.0).to(z_tensor.device)
         N_times = 1 # For how many dimensions does each oracle control.
+        z_sum = z_tensor[0,:,0] + z_tensor[1,:,0]
         for i in range(used_oracles):
             for j in range(N_times):
                 # print((log_z_sm[1, :, assigned_dims[i] * N_times + j] * pref_all[i,:]).shape)
                 # print(mask_all[i,:].shape)
-                this_loss = torch.sum(log_z_sm[1, :, assigned_dims[i] * N_times + j] * pref_all[i,:] * mask_all[i,:]) + \
-                            torch.sum(log_z_sm[0, :, assigned_dims[i] * N_times + j] * (1-pref_all[i,:]) * mask_all[i,:])
+                # this_loss = torch.sum(log_z_sm[1, :, assigned_dims[i] * N_times + j] * pref_all[i,:] * mask_all[i,:]) + \
+                #             torch.sum(log_z_sm[0, :, assigned_dims[i] * N_times + j] * (1-pref_all[i,:]) * mask_all[i,:])
+                # this_loss = torch.sum(log_z_sm[1, :, assigned_dims[i] * N_times + j] * pref_all[i,:] * mask_all[i,:]) + \
+                #             torch.sum(log_z_sm[0, :, assigned_dims[i] * N_times + j] * (z_sum-pref_all[i,:]) * mask_all[i,:])
+                this_loss = torch.mean(log_z_sm[1, :, assigned_dims[i] * N_times + j] * pref_all[i,:] * mask_all[i,:]) + \
+                            torch.mean(log_z_sm[0, :, assigned_dims[i] * N_times + j] * (z_sum-pref_all[i,:]) * mask_all[i,:])
                 if not torch.isnan(this_loss):
                     loss_unweighted += this_loss
         loss_unweighted = -loss_unweighted / (used_oracles * N_times)

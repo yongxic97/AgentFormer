@@ -232,7 +232,7 @@ class FutureEncoder(nn.Module): # approximate posterior
         )
 
         self.csv_newstamp = str(ctx['epochs']) + ".csv"
-        self.this_run_info = '0502_0102_take1'
+        self.this_run_info = '0506_0102_take1'
 
     def forward(self, data, reparam=True):
         traj_in = []
@@ -376,7 +376,7 @@ class FutureDecoder(nn.Module):
         self.copy_future_encoder = future_encoder
 
         self.csv_newstamp = str(ctx['epochs']) + ".csv"
-        self.this_run_info = '0502_0102_take1'
+        self.this_run_info = '0506_0102_take1'
 
     def regen_posterior(self, data, pred_vel, pred_sn):
         traj_in = []
@@ -582,7 +582,7 @@ class FutureDecoder(nn.Module):
             if self.z_type == 'gaussian':
                 data[prior_key] = Normal(mu=torch.zeros(pre_motion.shape[1], self.nz).to(pre_motion.device), logvar=torch.zeros(pre_motion.shape[1], self.nz).to(pre_motion.device))
             elif self.z_type == 'beta':
-                data[prior_key] = Beta(alpha=10*torch.ones(pre_motion.shape[1], self.nz).to(pre_motion.device), beta=10*torch.ones(pre_motion.shape[1], self.nz).to(pre_motion.device))
+                data[prior_key] = Beta(alpha=torch.ones(pre_motion.shape[1], self.nz).to(pre_motion.device), beta=torch.ones(pre_motion.shape[1], self.nz).to(pre_motion.device))
             else:
                 data[prior_key] = Categorical(logits=torch.zeros(pre_motion.shape[1], self.nz).to(pre_motion.device))
 
@@ -592,7 +592,7 @@ class FutureDecoder(nn.Module):
             elif mode == 'infer':
                 z = data['p_z_dist_infer'].sample()
 
-                if self.print_csv:
+                if self.print_csv and self.learn_prior:
                     alpha_np = (F.elu(p_z_params_1)+2.0).detach().cpu().numpy()
                     beta_np  = (F.elu(p_z_params_2)+2.0).detach().cpu().numpy()
                     with open("./test/z_data/"+self.this_run_info+"/a_prior/"+self.csv_newstamp, "a", newline="") as f:
