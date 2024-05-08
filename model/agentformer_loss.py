@@ -103,13 +103,15 @@ def oracle_prefers_slower_avg_vel(z, pred, gt, pre_motion, mask=False):
 
         ## Percentage mask
         # Only consider those prediction pairs (y1e, y2e) that |(yie-y_gt) / y_gt| > 5%
-        percentage_threshold = 0.3
         for i in range(bs):
+            z0 = z[0][i,0]
+            z1 = z[1][i,0]
+            percentage_threshold = 0.5 * abs(z0-z1)
             if abs(des0[i] - gt_vel[i]) / gt_vel[i] < percentage_threshold \
                 or abs(des1[i] - gt_vel[i]) / gt_vel[i] < percentage_threshold:
                 vel_mask[i] = 0
                 used[i] = 0
-        
+        # print("reached")
         used_cnt = torch.sum(used)
         ########## END of Percentage mask ##########
     return prefs, vel_mask, used_cnt
@@ -155,6 +157,7 @@ def compute_sample_loss(data, cfg):
 
 
 def compute_oracle_preference_loss(data, cfg):
+    # print("reached")
     z = data['oracle_eval_z']                                               # z   : [z_dim]; [bs, nz]
     pred = data['oracle_eval_dec_motion']                                   # pred: [z_dim]; [bs, fut_len, 2]; 
     gt = data['fut_motion_orig']                                            # gt  : [bs, fut_len, 2]
@@ -222,8 +225,11 @@ def compute_oracle_preference_loss(data, cfg):
                 #             torch.sum(log_z_sm[0, :, assigned_dims[i] * N_times + j] * (1-pref_all[i,:]) * mask_all[i,:])
                 # this_loss = torch.sum(log_z_sm[1, :, assigned_dims[i] * N_times + j] * pref_all[i,:] * mask_all[i,:]) + \
                 #             torch.sum(log_z_sm[0, :, assigned_dims[i] * N_times + j] * (z_sum-pref_all[i,:]) * mask_all[i,:])
-                this_loss = torch.mean(log_z_sm[1, :, assigned_dims[i] * N_times + j] * pref_all[i,:] * mask_all[i,:]) + \
-                            torch.mean(log_z_sm[0, :, assigned_dims[i] * N_times + j] * (z_sum-pref_all[i,:]) * mask_all[i,:])
+                if cfg['dominant_only']:
+                    pass
+                else:
+                    this_loss = torch.mean(log_z_sm[1, :, assigned_dims[i] * N_times + j] * pref_all[i,:] * mask_all[i,:]) + \
+                                torch.mean(log_z_sm[0, :, assigned_dims[i] * N_times + j] * (z_sum-pref_all[i,:]) * mask_all[i,:])
                 if not torch.isnan(this_loss):
                     loss_unweighted += this_loss
         loss_unweighted = -loss_unweighted / (used_oracles * N_times)

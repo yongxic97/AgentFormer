@@ -1,12 +1,13 @@
 #!/bin/bash
 z_begin=1
-z_step=4
+z_step=1
 z_end=9
 len=10
-eps_start=6
-eps_end=6
+eps_start=30
+eps_end=62
+step_len=4
 
-for ((i=eps_start;i<=eps_end;i+=2)); do
+for ((i=eps_start;i<=eps_end;i+=step_len)); do
     for ((z=z_begin;z<=z_end;z+=z_step)); do
         result=$(echo "scale=2; $z / $len" | bc)
         echo "Getting results for z=${result}, at # epoch ${i}"
