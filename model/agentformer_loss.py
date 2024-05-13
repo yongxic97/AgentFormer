@@ -226,7 +226,9 @@ def compute_oracle_preference_loss(data, cfg):
                 # this_loss = torch.sum(log_z_sm[1, :, assigned_dims[i] * N_times + j] * pref_all[i,:] * mask_all[i,:]) + \
                 #             torch.sum(log_z_sm[0, :, assigned_dims[i] * N_times + j] * (z_sum-pref_all[i,:]) * mask_all[i,:])
                 if cfg['dominant_only']:
-                    pass
+                    this_loss = torch.sum(log_z_sm[1, :, assigned_dims[i] * N_times + j] * pref_all[i,:] * mask_all[i,:]) + \
+                                torch.sum(log_z_sm[0, :, assigned_dims[i] * N_times + j] * (z_sum-pref_all[i,:]) * mask_all[i,:])
+                    this_loss /= used
                 else:
                     this_loss = torch.mean(log_z_sm[1, :, assigned_dims[i] * N_times + j] * pref_all[i,:] * mask_all[i,:]) + \
                                 torch.mean(log_z_sm[0, :, assigned_dims[i] * N_times + j] * (z_sum-pref_all[i,:]) * mask_all[i,:])

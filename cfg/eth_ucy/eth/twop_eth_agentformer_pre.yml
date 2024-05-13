@@ -55,8 +55,8 @@ learn_prior                  : false
 
 lr                           : 1.e-5
 loss_cfg:
-  mse:
-    weight: 1.0
+  # mse:
+  #   weight: 1.0
   # kld:
   #   weight: 1.0
   #   min_clip: 2.0
