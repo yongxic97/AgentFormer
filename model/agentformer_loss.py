@@ -106,7 +106,8 @@ def oracle_prefers_slower_avg_vel(z, pred, gt, pre_motion, mask=False):
         for i in range(bs):
             z0 = z[0][i,0]
             z1 = z[1][i,0]
-            percentage_threshold = 0.5 * abs(z0-z1)
+            # percentage_threshold = 0.5 * abs(z0-z1)
+            percentage_threshold = 0.3
             if abs(des0[i] - gt_vel[i]) / gt_vel[i] < percentage_threshold \
                 or abs(des1[i] - gt_vel[i]) / gt_vel[i] < percentage_threshold:
                 vel_mask[i] = 0
