@@ -44,20 +44,12 @@ def oracle_prefers_slower_avg_vel(z, pred, gt, pre_motion, mask=False):
     pre_motion_copy = pre_motion_copy.permute(1,0,2) # [bs, fut_len, 2]
     bs = pred[0].shape[0] # get batch size
 
-    for i in range(len(z)):
-        # print("pre_motion_copy[:,-1,:].shape", pre_motion_copy[:,-1,:].shape)
-        # print(i)
-        vel_seqs = pred[i] - torch.cat([pre_motion_copy[:,-1,:].unsqueeze(1), pred[i][:, :-1, :]],dim=1)
-        vel_avg = torch.sqrt(vel_seqs[:,:,0].pow(2) + vel_seqs[:,:,1].pow(2)).mean(dim=1) # [bs]
-        # print(vel_avg)
-        # print("vel avg shape", vel_avg.shape)
-        # vel_avg = torch.zeros(bs)
-        # print("vel_avg", vel_avg.shape)
-        if i == 0:
-            des0 = vel_avg
-        else:
-            des1 = vel_avg
+    vel_seqs = pred - torch.cat([pre_motion_copy[:,-1,:].unsqueeze(1).unsqueeze(0), pred[:, :-1, :]],dim=1)
+    vel_avg = torch.norm(vel_seqs, dim=-1).mean(dim=2) # [z_dim, bs]
+    des0 = vel_avg[0]
+    des1 = vel_avg[1]
     prefs = torch.zeros(bs)
+
     for i in range(bs):
         z0 = z[0][i,0]
         z1 = z[1][i,0]
@@ -73,13 +65,12 @@ def oracle_prefers_slower_avg_vel(z, pred, gt, pre_motion, mask=False):
         ## differentiable 'soft' preference
         scale_diff = 10.0
         m = nn.Sigmoid()
+        diff_des = (des0[i] - des1[i]) * scale_diff
         if (z1>z0):
-            diff_des = (des0[i] - des1[i]) * scale_diff
             prefs[i] = m(diff_des) * (z1-z0) + z0
             # prefs[i] = torch.tanh(diff_des)
         else:
-            diff_des = (des1[i] - des0[i]) * scale_diff
-            prefs[i] = m(diff_des) * (z0-z1) + z1
+            prefs[i] = m(-diff_des) * (z0-z1) + z1
             # prefs[i] = torch.tanh(diff_des)
         # print(diff_des)
         # print("This preference", prefs[i])
