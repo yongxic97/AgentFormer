@@ -44,10 +44,19 @@ def oracle_prefers_slower_avg_vel(z, pred, gt, pre_motion, mask=False):
     pre_motion_copy = pre_motion_copy.permute(1,0,2) # [bs, fut_len, 2]
     bs = pred[0].shape[0] # get batch size
 
-    vel_seqs = pred - torch.cat([pre_motion_copy[:,-1,:].unsqueeze(1).unsqueeze(0), pred[:, :-1, :]],dim=1)
-    vel_avg = torch.norm(vel_seqs, dim=-1).mean(dim=2) # [z_dim, bs]
-    des0 = vel_avg[0]
-    des1 = vel_avg[1]
+    # vel_seqs = pred - torch.cat([pre_motion_copy[:,-1,:].unsqueeze(1).unsqueeze(0), pred[:, :-1, :]],dim=1)
+    # vel_avg = torch.norm(vel_seqs, dim=-1).mean(dim=2) # [z_dim, bs]
+    # des0 = vel_avg[0]
+    # des1 = vel_avg[1]
+
+    for i in range(len(z)):
+        vel_seqs = pred[i] - torch.cat([pre_motion_copy[:,-1,:].unsqueeze(1), pred[i][:, :-1, :]],dim=1)
+        vel_avg = torch.sqrt(vel_seqs[:,:,0].pow(2) + vel_seqs[:,:,1].pow(2)).mean(dim=1) # [bs]
+        if i == 0:
+            des0 = vel_avg
+        else:
+            des1 = vel_avg
+
     prefs = torch.zeros(bs)
 
     for i in range(bs):
@@ -218,12 +227,12 @@ def compute_oracle_preference_loss(data, cfg):
                 # this_loss = torch.sum(log_z_sm[1, :, assigned_dims[i] * N_times + j] * pref_all[i,:] * mask_all[i,:]) + \
                 #             torch.sum(log_z_sm[0, :, assigned_dims[i] * N_times + j] * (z_sum-pref_all[i,:]) * mask_all[i,:])
                 if cfg['dominant_only']:
-                    this_loss = torch.sum(log_z_sm[1, :, assigned_dims[i] * N_times + j] * pref_all[i,:] * mask_all[i,:]) + \
-                                torch.sum(log_z_sm[0, :, assigned_dims[i] * N_times + j] * (z_sum-pref_all[i,:]) * mask_all[i,:])
+                    this_loss = torch.sum(log_z_sm[0, :, assigned_dims[i] * N_times + j] * pref_all[i,:] * mask_all[i,:]) + \
+                                torch.sum(log_z_sm[1, :, assigned_dims[i] * N_times + j] * (z_sum-pref_all[i,:]) * mask_all[i,:])
                     this_loss /= used
                 else:
-                    this_loss = torch.mean(log_z_sm[1, :, assigned_dims[i] * N_times + j] * pref_all[i,:] * mask_all[i,:]) + \
-                                torch.mean(log_z_sm[0, :, assigned_dims[i] * N_times + j] * (z_sum-pref_all[i,:]) * mask_all[i,:])
+                    this_loss = torch.mean(log_z_sm[0, :, assigned_dims[i] * N_times + j] * pref_all[i,:] * mask_all[i,:]) + \
+                                torch.mean(log_z_sm[1, :, assigned_dims[i] * N_times + j] * (z_sum-pref_all[i,:]) * mask_all[i,:])
                 if not torch.isnan(this_loss):
                     loss_unweighted += this_loss
         loss_unweighted = -loss_unweighted / (used_oracles * N_times)

@@ -651,19 +651,28 @@ class FutureDecoder(nn.Module):
                 z_sampled.append(random.choice(z_hc_set))
                 z_hc_set.remove(z_sampled[0])
                 z_sampled.append(random.choice(z_hc_set))
+
+            z_twop = []
+            z_twop.append(data['p_z_dist'].rsample())   # prior makes more sense?
+            z_twop.append(data['p_z_dist'].rsample())   # prior makes more sense?
+
+            if z_twop[0].mean() > z_twop[1].mean():
+                z_twop[0], z_twop[1] = z_twop[1], z_twop[0]
+
             # for i in range(int(self.loss_cfg['op']['k'])):
             for i in range(2):
                 # print(f"Generating extra samples for twop... Index: {i}")
                 # z_twop = data['q_z_dist'].rsample() # as if at inference time, sample from approximate posterior                
-                z_twop = data['p_z_dist'].rsample()   # prior makes more sense?
+                
                 # [bs, nz]
                 if self.twop_sample_z_from_hc_set:
                     z_twop = z_twop.clone().detach().requires_grad_(False).to(z_twop.device)
                     z_twop[:, 0:1] = torch.tensor(z_sampled[i])
+                
                 if self.twop_get_z_strategy == 'z_gt_post_sample':
                     # print('twop size', z_twop.shape)
-                    data['oracle_eval_z'][i] = z_twop
-                self.decode_traj_ar(data, mode, context, pre_motion, pre_vel, pre_motion_scene_norm, z_twop, sample_num, need_weights=False, gen_pref=i)
+                    data['oracle_eval_z'][i] = z_twop[i]
+                self.decode_traj_ar(data, mode, context, pre_motion, pre_vel, pre_motion_scene_norm, z_twop[i], sample_num, need_weights=False, gen_pref=i)
 
 
 """ AgentFormer """

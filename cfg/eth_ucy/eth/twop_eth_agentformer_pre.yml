@@ -55,14 +55,14 @@ learn_prior                  : false
 
 lr                           : 1.e-5
 loss_cfg:
-  # mse:
-  #   weight: 1.0
-  # kld:
-  #   weight: 1.0
-  #   min_clip: 2.0
-  # sample:
-  #   weight: 1.0
-  #   k: 20
+  mse:
+    weight: 1.0
+  kld:
+    weight: 1.0
+    min_clip: 2.0
+  sample:
+    weight: 1.0
+    k: 20
   op: # oracle preference
     weight: 16.0
     k: 2 # use how many samples for comparison
@@ -76,7 +76,7 @@ loss_cfg:
     assign_tailored_dims      : false
     assign_user_dims          : true
     mask_insignificant_comp   : true
-    dominant_only             : false
+    dominant_only             : true
 
 num_epochs                   : 120
 lr_fix_epochs                : 10
@@ -95,8 +95,8 @@ twop_get_z_strategy          : 'z_gt_post_sample'
 #       `z_re_post_sample`
 #       `z_re_post_mean`
 #       `z_re_post_mode`
-user_give_z_at_test          : true
-print_csv                    : true
+user_give_z_at_test          : false
+print_csv                    : false
 
 pretrain                     : false
 add_loss_eps                 : 20 # After how many epochs to add the preference loss
