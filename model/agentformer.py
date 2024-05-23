@@ -232,7 +232,7 @@ class FutureEncoder(nn.Module): # approximate posterior
         )
 
         self.csv_newstamp = str(ctx['epochs']) + ".csv"
-        self.this_run_info = '0522_0101_take1'
+        self.this_run_info = '0523_0101_take1'
 
     def forward(self, data, reparam=True):
         traj_in = []
@@ -376,7 +376,7 @@ class FutureDecoder(nn.Module):
         self.copy_future_encoder = future_encoder
 
         self.csv_newstamp = str(ctx['epochs']) + ".csv"
-        self.this_run_info = '0522_0101_take1'
+        self.this_run_info = '0523_0101_take1'
 
     def regen_posterior(self, data, pred_vel, pred_sn):
         traj_in = []
@@ -656,8 +656,16 @@ class FutureDecoder(nn.Module):
             z_twop.append(data['p_z_dist'].rsample())   # prior makes more sense?
             z_twop.append(data['p_z_dist'].rsample())   # prior makes more sense?
 
-            if z_twop[0].mean() > z_twop[1].mean():
-                z_twop[0], z_twop[1] = z_twop[1], z_twop[0]
+            # print(z_twop[0].shape)
+            # print(z_twop[0])
+            # print(z_twop[0].mean())
+
+            # if z_twop[0].mean() > z_twop[1].mean():
+            #     z_twop[0], z_twop[1] = z_twop[1], z_twop[0]
+
+            for i in range(z_twop[0].shape[0]): # bs
+                if z_twop[0][i, 0] > z_twop[1][i, 0]: # swap dim 0 if needed
+                    z_twop[0][i], z_twop[1][i] = z_twop[1][i], z_twop[0][i]
 
             # for i in range(int(self.loss_cfg['op']['k'])):
             for i in range(2):
