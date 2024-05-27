@@ -64,7 +64,7 @@ loss_cfg:
     weight: 1.0
     k: 20
   op: # oracle preference
-    weight: 16.0
+    weight: 8.0
     k: 2 # use how many samples for comparison
     oracles:
       ade                     : false
@@ -78,7 +78,7 @@ loss_cfg:
     mask_insignificant_comp   : true
     dominant_only             : true
 
-num_epochs                   : 100
+num_epochs                   : 60
 lr_fix_epochs                : 10
 lr_scheduler: 'step'
 decay_step: 10
@@ -95,8 +95,8 @@ twop_get_z_strategy          : 'z_gt_post_sample'
 #       `z_re_post_sample`
 #       `z_re_post_mean`
 #       `z_re_post_mode`
-user_give_z_at_test          : false
-print_csv                    : false
+user_give_z_at_test          : true
+print_csv                    : true
 
 pretrain                     : false
 add_loss_eps                 : 20 # After how many epochs to add the preference loss

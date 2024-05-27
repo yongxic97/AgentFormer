@@ -23,7 +23,7 @@ class Config:
         self.cfg_root_dir = os.path.expanduser(cfg_root_dir)
 
         self.cfg_dir = '%s/%s' % (self.cfg_root_dir, cfg_id)
-        self.model_dir = '%s/models_0523_0101_take1' % self.cfg_dir
+        self.model_dir = '%s/models_0523_0103_take1' % self.cfg_dir
         self.result_dir = '%s/results' % self.cfg_dir
         self.log_dir = '%s/log' % self.cfg_dir
         self.tb_dir = '%s/tb' % self.cfg_dir
