@@ -37,7 +37,7 @@ def oracle_prefers_smaller_de_batch(z, pred, gt, compute_DE):
     Instead, we sample random trajectories from the batch to compare '''
     pass
 
-def oracle_prefers_slower_avg_vel(z, pred, gt, pre_motion, mask=False):
+def oracle_prefers_slower_avg_vel(z, pred, gt, pre_motion, mask=False, avg='none'):
     des0, des1 = None, None
     pre_motion_copy = pre_motion.clone()
     # pred: [z_dim, bs, fut_len, 2]; pre_motion: [fut_len, bs, 2]
@@ -72,15 +72,36 @@ def oracle_prefers_slower_avg_vel(z, pred, gt, pre_motion, mask=False):
         #     prefs[i] = 0.5
         
         ## differentiable 'soft' preference
-        scale_diff = 10.0
-        m = nn.Sigmoid()
-        diff_des = (des0[i] - des1[i]) * scale_diff
-        if (z1>z0):
-            prefs[i] = m(diff_des) * (z1-z0) + z0
-            # prefs[i] = torch.tanh(diff_des)
+
+        if avg == 'none':
+            scale_diff = 10.0
+            m = nn.Sigmoid()
+            diff_des = (des0[i] - des1[i]) * scale_diff
+            if (z1>z0):
+                prefs[i] = m(diff_des) * (z1-z0) + z0
+                # prefs[i] = torch.tanh(diff_des)
+            else:
+                prefs[i] = m(-diff_des) * (z0-z1) + z1
+                # prefs[i] = torch.tanh(diff_des)
+        elif avg == 'weight':
+            scale_diff = 10.0
+            m = nn.Sigmoid()
+            diff_des = (des0[i] - des1[i]) * scale_diff
+            if (z1>z0):
+                prefs[i] = m(diff_des) * (z1-z0)/(z0+z1) + z0/(z0+z1)
+            else:
+                prefs[i] = m(-diff_des) * (z0-z1)/(z0+z1) + z1/(z0+z1)
+        elif avg == 'softmax':
+            scale_diff = 10.0
+            m = nn.Sigmoid()
+            diff_des = (des0[i] - des1[i]) * scale_diff
+            if (z1>z0):
+                prefs[i] = m(diff_des) * (torch.exp(z1)-torch.exp(z0))/(torch.exp(z0)+torch.exp(z1)) + torch.exp(z0)/(torch.exp(z0)+torch.exp(z1))
+            else:
+                prefs[i] = m(-diff_des) * (torch.exp(z0)-torch.exp(z1))/(torch.exp(z0)+torch.exp(z1)) + torch.exp(z1)/(torch.exp(z0)+torch.exp(z1))
         else:
-            prefs[i] = m(-diff_des) * (z0-z1) + z1
-            # prefs[i] = torch.tanh(diff_des)
+            raise NotImplementedError('Average strategy not implemented. Available: none, weight, softmax')
+
         # print(diff_des)
         # print("This preference", prefs[i])
 
@@ -188,7 +209,7 @@ def compute_oracle_preference_loss(data, cfg):
         prefs_list.append(pref_fde_batch)
         used_oracles += 1
     if oracles['avg_vel']:
-        pref_avg_vel, vel_mask, used = oracle_prefers_slower_avg_vel(z, pred, gt, pre_motion, mask=cfg['mask_insignificant_comp'])
+        pref_avg_vel, vel_mask, used = oracle_prefers_slower_avg_vel(z, pred, gt, pre_motion, mask=cfg['mask_insignificant_comp'], avg=cfg['average_strategy'])
         prefs_list.append(pref_avg_vel)
         mask_list.append(vel_mask)
         used_oracles += 1
@@ -211,8 +232,13 @@ def compute_oracle_preference_loss(data, cfg):
         # z_tensor_norm = torch.stack((z_tensor[0]/(z_tensor[0]+z_tensor[1]), z_tensor[1]/(z_tensor[0]+z_tensor[1])))
         # log_z_sm = torch.log(z_tensor_norm)
 
-        log_z_sm = torch.log(z_tensor)
-
+        if cfg['average_strategy'] == 'none' or cfg['average_strategy'] == 'weight':
+            log_z_sm = torch.log(z_tensor)
+        elif cfg['average_strategy'] == 'softmax':
+            log_z_sm = torch.log(nn.functional.softmax(z_tensor, dim=0))
+        else:
+            raise NotImplementedError('Average strategy not implemented. Available: none, weight, softmax')
+        
         assigned_dims = [0] # hardcoded for now
 
         loss_unweighted = torch.tensor(0.0).to(z_tensor.device)
@@ -226,13 +252,28 @@ def compute_oracle_preference_loss(data, cfg):
                 #             torch.sum(log_z_sm[0, :, assigned_dims[i] * N_times + j] * (1-pref_all[i,:]) * mask_all[i,:])
                 # this_loss = torch.sum(log_z_sm[1, :, assigned_dims[i] * N_times + j] * pref_all[i,:] * mask_all[i,:]) + \
                 #             torch.sum(log_z_sm[0, :, assigned_dims[i] * N_times + j] * (z_sum-pref_all[i,:]) * mask_all[i,:])
-                if cfg['dominant_only']:
-                    this_loss = torch.sum(log_z_sm[1, :, assigned_dims[i] * N_times + j] * pref_all[i,:] * mask_all[i,:]) + \
-                                torch.sum(log_z_sm[0, :, assigned_dims[i] * N_times + j] * (z_sum-pref_all[i,:]) * mask_all[i,:])
-                    this_loss /= used
+                SMALLER = 0  # For comparison experiments, only need to change this
+                LARGER = 1 - SMALLER
+                if cfg['average_strategy'] == 'none' or cfg['average_strategy'] == 'softmax':
+                    if cfg['dominant_only']:
+                        this_loss = torch.sum(log_z_sm[SMALLER, :, assigned_dims[i] * N_times + j] * pref_all[i,:] * mask_all[i,:]) + \
+                                    torch.sum(log_z_sm[LARGER, :, assigned_dims[i] * N_times + j] * (z_sum-pref_all[i,:]) * mask_all[i,:])
+                        this_loss /= used
+                    else:
+                        this_loss = torch.mean(log_z_sm[SMALLER, :, assigned_dims[i] * N_times + j] * pref_all[i,:] * mask_all[i,:]) + \
+                                    torch.mean(log_z_sm[LARGER, :, assigned_dims[i] * N_times + j] * (z_sum-pref_all[i,:]) * mask_all[i,:])
+                elif cfg['average_strategy'] == 'weight':
+                    log_z_sum = log_z_sm[0, :, assigned_dims[i] * N_times + j] + log_z_sm[1, :, assigned_dims[i] * N_times + j]
+                    if cfg['dominant_only']:
+                        this_loss = torch.sum((log_z_sm[SMALLER, :, assigned_dims[i] * N_times + j] - log_z_sum) * pref_all[i,:] * mask_all[i,:]) + \
+                                    torch.sum((log_z_sm[LARGER, :, assigned_dims[i] * N_times + j] - log_z_sum) * (z_sum-pref_all[i,:]) * mask_all[i,:])
+                        this_loss /= used
+                    else:
+                        this_loss = torch.mean((log_z_sm[SMALLER, :, assigned_dims[i] * N_times + j] - log_z_sum) * pref_all[i,:] * mask_all[i,:]) + \
+                                    torch.mean((log_z_sm[LARGER, :, assigned_dims[i] * N_times + j] - log_z_sum) * (z_sum-pref_all[i,:]) * mask_all[i,:])
                 else:
-                    this_loss = torch.mean(log_z_sm[1, :, assigned_dims[i] * N_times + j] * pref_all[i,:] * mask_all[i,:]) + \
-                                torch.mean(log_z_sm[0, :, assigned_dims[i] * N_times + j] * (z_sum-pref_all[i,:]) * mask_all[i,:])
+                    raise NotImplementedError('Average strategy not implemented. Available: none, weight, softmax')
+                
                 if not torch.isnan(this_loss):
                     loss_unweighted += this_loss
         loss_unweighted = -loss_unweighted / (used_oracles * N_times)

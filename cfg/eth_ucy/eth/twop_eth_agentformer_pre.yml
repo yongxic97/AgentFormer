@@ -63,22 +63,23 @@ loss_cfg:
   sample:
     weight: 1.0
     k: 20
-  # op: # oracle preference
-  #   weight: 8.0
-  #   k: 2 # use how many samples for comparison
-  #   oracles:
-  #     ade                     : false
-  #     ade_batch               : false
-  #     fde                     : false
-  #     fde_batch               : false
-  #     avg_vel                 : true
-  #     min_gap                 : false
-  #   assign_tailored_dims      : false
-  #   assign_user_dims          : true
-  #   mask_insignificant_comp   : true
-  #   dominant_only             : true
+  op: # oracle preference
+    weight: 16.0
+    k: 2 # use how many samples for comparison
+    oracles:
+      ade                     : false
+      ade_batch               : false
+      fde                     : false
+      fde_batch               : false
+      avg_vel                 : true
+      min_gap                 : false
+    assign_tailored_dims      : false
+    assign_user_dims          : true
+    mask_insignificant_comp   : true
+    dominant_only             : true
+    average_strategy          : 'weight' # 'none', `weight` or `softmax`
 
-num_epochs                   : 60
+num_epochs                   : 100
 lr_fix_epochs                : 10
 lr_scheduler: 'step'
 decay_step: 10
@@ -95,8 +96,8 @@ twop_get_z_strategy          : 'z_gt_post_sample'
 #       `z_re_post_sample`
 #       `z_re_post_mean`
 #       `z_re_post_mode`
-user_give_z_at_test          : true
-print_csv                    : true
+user_give_z_at_test          : false
+print_csv                    : false
 
 pretrain                     : false
 add_loss_eps                 : 20 # After how many epochs to add the preference loss
