@@ -77,7 +77,7 @@ loss_cfg:
     assign_user_dims          : true
     mask_insignificant_comp   : true
     dominant_only             : true
-    average_strategy          : 'weight' # 'none', `weight` or `softmax`
+    average_strategy          : 'softmax' # 'none', `weight` or `softmax`
 
 num_epochs                   : 100
 lr_fix_epochs                : 10
