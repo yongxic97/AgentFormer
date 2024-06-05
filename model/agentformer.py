@@ -619,7 +619,7 @@ class FutureDecoder(nn.Module):
                 # z[:,0:1][z[:,0:1]<threshold] = threshold      # ADE
                 if self.external_assign_z_at_test:
                     z[:,0:1] = self.user_z
-                    z[:,1:2] = 0.5
+                    # z[:,1:2] = 0.5
                 else:
                     z[:,0:1] = 0.5
                 # z[:, 24:25]= 0.1    # FDE
@@ -654,8 +654,11 @@ class FutureDecoder(nn.Module):
                 z_sampled.append(random.choice(z_hc_set))
 
             z_twop = []
-            z_twop.append(data['p_z_dist'].rsample())   # prior makes more sense?
-            z_twop.append(data['p_z_dist'].rsample())   # prior makes more sense?
+            z_twop.append(torch.rand_like(data['p_z_dist'].rsample()))
+            z_twop.append(torch.rand_like(data['p_z_dist'].rsample()))
+            
+            # z_twop.append(data['p_z_dist'].rsample())   # prior makes more sense?
+            # z_twop.append(data['p_z_dist'].rsample())   # prior makes more sense?
 
             # print(z_twop[0].shape)
             # print(z_twop[0])
@@ -667,6 +670,9 @@ class FutureDecoder(nn.Module):
             for i in range(z_twop[0].shape[0]): # bs
                 if z_twop[0][i, 0] > z_twop[1][i, 0]: # swap dim 0 if needed
                     z_twop[0][i], z_twop[1][i] = z_twop[1][i], z_twop[0][i]
+            
+            # z_twop[0] = z_twop[0].clone().detach().requires_grad_(False).to(z_twop[0].device)
+            # z_twop[1] = z_twop[1].clone().detach().requires_grad_(False).to(z_twop[1].device)
 
             # for i in range(int(self.loss_cfg['op']['k'])):
             for i in range(2):
