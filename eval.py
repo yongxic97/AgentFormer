@@ -8,7 +8,7 @@ from utils.utils import print_log, AverageMeter, isfile, print_log, AverageMeter
 import csv
 
 """ Metrics """
-
+# blue (repeated for cyclic effect)
 def compute_ADE(pred_arr, gt_arr, _):
     ade = 0.0
     for pred, gt in zip(pred_arr, gt_arr):
@@ -33,8 +33,10 @@ def compute_FDE(pred_arr, gt_arr, _):
 def compute_avg_vel(pred_arr, _, curr_pos_arr):
     avgvel = 0.0
     for pred, curr_pos in zip(pred_arr, curr_pos_arr):
+        # print(pred.shape, curr_pos.shape)
         # print("pred shape", pred.shape) # [num_sample, pred_step, 2]
-        curr_pos = np.tile(curr_pos, (20, 1)).reshape(20,1,2)
+        SAMPLE_SIZE = 1 # 5 OR 10 for nuscenes, 20 for ethucy (1 for recon)
+        curr_pos = np.tile(curr_pos, (SAMPLE_SIZE, 1)).reshape(SAMPLE_SIZE,1,2)
         # print("curr pos shape", curr_pos.shape)
         last_step = np.concatenate((curr_pos, pred[:, :-1, :]), axis=1)
         vel_seq = pred - last_step
@@ -82,7 +84,7 @@ if __name__ == '__main__':
     results_dir = args.results_dir
     user_z = args.user_z
     epochs = args.epochs
-    this_run_info = f"0531_0102_take1"
+    this_run_info = f"0523_0101_take2"
     save_metrics_file = f'test/all_avgvel_ade_fde/{this_run_info}/{epochs}.csv'
     
     if dataset == 'nuscenes_pred':   # nuscenes

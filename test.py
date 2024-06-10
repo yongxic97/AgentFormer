@@ -20,11 +20,39 @@ def get_model_prediction(data, sample_k):
     sample_motion_3D = sample_motion_3D.transpose(0, 1).contiguous()
     return recon_motion_3D, sample_motion_3D
 
+def save_history(pre, data, save_dir):
+    pre_num = 0
+    pre_arr = []
+    pre_data, seq_name, frame, valid_id = data['pre_data'], data['seq'], data['frame'], data['valid_id']
+
+    for i in range(len(valid_id)):    # number o# blue (repeated for cyclic effect)f agents
+        identity = valid_id[i]
+        """ history frames """
+        for j in range(cfg.past_frames):
+            cur_data = pre_data[j]
+            if len(cur_data) > 0 and identity in cur_data[:, 1]:
+                data = cur_data[cur_data[:, 1] == identity].squeeze()
+            else:
+                data = most_recent_data.copy()
+                data[0] = frame - cfg.past_frames + j
+            data[[13, 15]] = pre[i, j].cpu().numpy()   # [13, 15] corresponds to 2D pos
+            most_recent_data = data.copy()
+            pre_arr.append(data)
+        pre_num += 1
+    if len(pre_arr) > 0:
+        pre_arr = np.vstack(pre_arr)
+        indices = [0, 1, 13, 15]            # frame, ID, x, z (remove y which is the height)
+        pre_arr = pre_arr[:, indices]
+        # save results
+        fname = f'{save_dir}/{seq_name}/pre_frame_{int(frame):06d}.txt'
+        mkdir_if_missing(fname)
+        np.savetxt(fname, pre_arr, fmt="%.3f")
+ 
 def save_prediction(pred, data, suffix, save_dir):
     pred_num = 0
     pred_arr = []
     fut_data, seq_name, frame, valid_id, pred_mask = data['fut_data'], data['seq'], data['frame'], data['valid_id'], data['pred_mask']
-
+    # print("keys of data", data.keys())
     for i in range(len(valid_id)):    # number of agents
         identity = valid_id[i]
         if pred_mask is not None and pred_mask[i] != 1.0:
@@ -64,7 +92,9 @@ def test_model(generator, save_dir, cfg):
         sys.stdout.write('testing seq: %s, frame: %06d                \r' % (seq_name, frame))  
         sys.stdout.flush()
 
+        gt_motion_hist_3D = torch.stack(data['pre_motion_3D'], dim=0).to(device) * cfg.traj_scale
         gt_motion_3D = torch.stack(data['fut_motion_3D'], dim=0).to(device) * cfg.traj_scale
+        # print("cfg.sample_k: ", cfg.sample_k)
         with torch.no_grad():
             recon_motion_3D, sample_motion_3D = get_model_prediction(data, cfg.sample_k)
         recon_motion_3D, sample_motion_3D = recon_motion_3D * cfg.traj_scale, sample_motion_3D * cfg.traj_scale
@@ -76,6 +106,7 @@ def test_model(generator, save_dir, cfg):
         for i in range(sample_motion_3D.shape[0]):
             save_prediction(sample_motion_3D[i], data, f'/sample_{i:03d}', sample_dir)
         save_prediction(recon_motion_3D, data, '', recon_dir)        # save recon
+        save_history(gt_motion_hist_3D, data, gt_dir)
         num_pred = save_prediction(gt_motion_3D, data, '', gt_dir)              # save gt
         total_num_pred += num_pred
 
@@ -105,8 +136,12 @@ if __name__ == '__main__':
     
     cfg = Config(args.cfg)
     cfg.epochs = args.epochs
-    cfg.user_z = args.user_z
-    # print(cfg.epochs)
+    cfg.user_z = args.user_z # the argument list feds to the AgentFormer class, and hard-code the z_0 there accordingly.
+    this_run_info = f"0523_0101_take2"
+    cfg.model_dir = '%s/models_' % cfg.cfg_dir + this_run_info
+    cfg.result_dir = '%s/results_%.1f_' % (cfg.cfg_dir, cfg.user_z) + this_run_info
+    print(cfg.model_dir)
+    print(cfg.result_dir)
     if args.epochs is None:
         epochs = [cfg.get_last_epoch()]
     else:

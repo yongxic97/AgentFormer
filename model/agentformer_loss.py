@@ -147,7 +147,8 @@ def compute_motion_mse(data, cfg):
     if cfg.get('mask', True):
         mask = data['fut_mask']
         diff *= mask.unsqueeze(2)
-    loss_unweighted = diff.pow(2).sum() 
+    loss_unweighted = diff.pow(2).sum() # original
+    # loss_unweighted = diff.pow(2).sum() + 8 * diff.pow(2)[:,0,:].sum()
     if cfg.get('normalize', True):
         loss_unweighted /= diff.shape[0]
     loss = loss_unweighted * cfg['weight']
