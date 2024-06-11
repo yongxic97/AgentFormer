@@ -35,7 +35,7 @@ def compute_avg_vel(pred_arr, _, curr_pos_arr):
     for pred, curr_pos in zip(pred_arr, curr_pos_arr):
         # print(pred.shape, curr_pos.shape)
         # print("pred shape", pred.shape) # [num_sample, pred_step, 2]
-        SAMPLE_SIZE = 1 # 5 OR 10 for nuscenes, 20 for ethucy (1 for recon)
+        SAMPLE_SIZE = 20 # 5 OR 10 for nuscenes, 20 for ethucy (1 for recon)
         curr_pos = np.tile(curr_pos, (SAMPLE_SIZE, 1)).reshape(SAMPLE_SIZE,1,2)
         # print("curr pos shape", curr_pos.shape)
         last_step = np.concatenate((curr_pos, pred[:, :-1, :]), axis=1)
@@ -84,7 +84,7 @@ if __name__ == '__main__':
     results_dir = args.results_dir
     user_z = args.user_z
     epochs = args.epochs
-    this_run_info = f"0523_0101_take2"
+    this_run_info = f"0610_0101_take1"
     save_metrics_file = f'test/all_avgvel_ade_fde/{this_run_info}/{epochs}.csv'
     
     if dataset == 'nuscenes_pred':   # nuscenes

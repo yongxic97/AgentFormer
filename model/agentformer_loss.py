@@ -95,7 +95,7 @@ def oracle_prefers_slower_avg_vel(z, pred, gt, pre_motion, mask=False, avg='none
             scale_diff = 10.0
             m = nn.Sigmoid()
             diff_des = (des0[i] - des1[i]) * scale_diff
-            if (z1>z0):
+            if (z1>z0): 
                 prefs[i] = m(diff_des) * (torch.exp(z1)-torch.exp(z0))/(torch.exp(z0)+torch.exp(z1)) + torch.exp(z0)/(torch.exp(z0)+torch.exp(z1))
             else:
                 prefs[i] = m(-diff_des) * (torch.exp(z0)-torch.exp(z1))/(torch.exp(z0)+torch.exp(z1)) + torch.exp(z1)/(torch.exp(z0)+torch.exp(z1))
@@ -147,8 +147,8 @@ def compute_motion_mse(data, cfg):
     if cfg.get('mask', True):
         mask = data['fut_mask']
         diff *= mask.unsqueeze(2)
-    loss_unweighted = diff.pow(2).sum() # original
-    # loss_unweighted = diff.pow(2).sum() + 8 * diff.pow(2)[:,0,:].sum()
+    # loss_unweighted = diff.pow(2).sum() # original
+    loss_unweighted = diff.pow(2).sum() + 8 * diff.pow(2)[:,0,:].sum()
     if cfg.get('normalize', True):
         loss_unweighted /= diff.shape[0]
     loss = loss_unweighted * cfg['weight']
