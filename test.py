@@ -137,7 +137,7 @@ if __name__ == '__main__':
     cfg = Config(args.cfg)
     cfg.epochs = args.epochs
     cfg.user_z = args.user_z # the argument list feds to the AgentFormer class, and hard-code the z_0 there accordingly.
-    this_run_info = f"0610_0101_take1"
+    this_run_info = f"0612_0101_take1"
     cfg.model_dir = '%s/models_' % cfg.cfg_dir + this_run_info
     cfg.result_dir = '%s/results_%.1f_' % (cfg.cfg_dir, cfg.user_z) + this_run_info
     print(cfg.model_dir)

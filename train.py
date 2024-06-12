@@ -43,16 +43,18 @@ def train(epoch):
             model.set_data(data)
             model_data = model()
 
-            if not cfg.pretrain:
-                total_loss, loss_dict, loss_unweighted_dict, used = model.compute_loss()
-                used_pref_pair_cnt += used
-            else:
-                if epoch <= cfg.add_loss_eps:
-                    total_loss, loss_dict, loss_unweighted_dict = model.compute_original_loss()
-                else:
+            if cfg.model_id=='agentformer':
+                if not cfg.pretrain:
                     total_loss, loss_dict, loss_unweighted_dict, used = model.compute_loss()
                     used_pref_pair_cnt += used
-            
+                else:
+                    if epoch <= cfg.add_loss_eps:
+                        total_loss, loss_dict, loss_unweighted_dict = model.compute_original_loss()
+                    else:
+                        total_loss, loss_dict, loss_unweighted_dict, used = model.compute_loss()
+                        used_pref_pair_cnt += used
+            elif cfg.model_id=='dlow':
+                total_loss, loss_dict, loss_unweighted_dict = model.compute_loss()            
             
             """ optimize """
             optimizer.zero_grad()
