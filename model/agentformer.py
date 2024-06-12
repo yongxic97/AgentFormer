@@ -9,7 +9,7 @@ from .common.dist import *
 from .agentformer_lib import AgentFormerEncoderLayer, AgentFormerDecoderLayer, AgentFormerDecoder, AgentFormerEncoder
 from .map_encoder import MapEncoder
 from utils.torch import *
-from utils.utils import initialize_weights
+from utils.utils import initialize_weights, mkdir_if_missing
 
 import csv
 import time
@@ -232,9 +232,9 @@ class FutureEncoder(nn.Module): # approximate posterior
         )
 
         self.csv_newstamp = str(ctx['epochs']) + ".csv"
-        self.this_run_info = '0612_0101_take1'
+        self.this_run_info = '0612_0102_take1'
 
-    def forward(self, data, reparam=True):
+    def forward(self, data, reparam=True, rerecon=-1):
         traj_in = []
         for key in self.input_type:
             if key == 'pos':
@@ -294,20 +294,27 @@ class FutureEncoder(nn.Module): # approximate posterior
         data['q_z_samp'] = data['q_z_dist'].rsample() # This is sampling from approximate posterior
 
         if self.print_csv:
-            alpha_np = q_z_params_alpha.detach().cpu().numpy()
-            beta_np = q_z_params_beta.detach().cpu().numpy()
-            with open("./test/z_data/"+self.this_run_info+"/a_post/"+self.csv_newstamp, "a", newline="") as f:
-                writer = csv.writer(f)
-                writer.writerows(alpha_np)
-            
-            with open("./test/z_data/"+self.this_run_info+"/b_post/"+self.csv_newstamp, "a", newline="") as f:
-                writer = csv.writer(f)
-                writer.writerows(beta_np)  
+            if rerecon < 0:
+                alpha_np = q_z_params_alpha.detach().cpu().numpy()
+                beta_np = q_z_params_beta.detach().cpu().numpy()
 
-            with open("./test/z_data/"+self.this_run_info+"/z_post/"+self.csv_newstamp, "a", newline="") as f:
-                writer = csv.writer(f)
-                writer.writerows(data['q_z_samp'].detach().cpu().numpy())  
+                save_dir = "./test/z_data/"+self.this_run_info+"/z_post/"+self.csv_newstamp; mkdir_if_missing(save_dir)
+                # with open("./test/z_data/"+self.this_run_info+"/a_post/"+self.csv_newstamp, "a", newline="") as f:
+                #     writer = csv.writer(f)
+                #     writer.writerows(alpha_np)
+                
+                # with open("./test/z_data/"+self.this_run_info+"/b_post/"+self.csv_newstamp, "a", newline="") as f:
+                #     writer = csv.writer(f)
+                #     writer.writerows(beta_np)  
 
+                with open(save_dir, "a", newline="") as f:
+                    writer = csv.writer(f)
+                    writer.writerows(data['q_z_samp'].detach().cpu().numpy())  
+            else:
+                save_dir = "./test/z_data_rerecon/"+self.this_run_info+"/z_post_%.1f/" % rerecon+self.csv_newstamp; mkdir_if_missing(save_dir)
+                with open(save_dir, "a", newline="") as f:
+                    writer = csv.writer(f)
+                    writer.writerows(data['q_z_dist'].mode().detach().cpu().numpy())
 
 """ Future Decoder """
 class FutureDecoder(nn.Module):
@@ -376,7 +383,7 @@ class FutureDecoder(nn.Module):
         self.copy_future_encoder = future_encoder
 
         self.csv_newstamp = str(ctx['epochs']) + ".csv"
-        self.this_run_info = '0612_0101_take1'
+        self.this_run_info = '0612_0102_take1'
 
     def regen_posterior(self, data, pred_vel, pred_sn):
         traj_in = []
@@ -564,6 +571,8 @@ class FutureDecoder(nn.Module):
         
         # p(z)
         prior_key = 'p_z_dist' + ('_infer' if mode == 'infer' else '')
+
+        # print("fix prior dim size: ", pre_motion.shape[1], self.nz)
         if self.learn_prior:
             h = data['agent_context'].repeat_interleave(sample_num, dim=0)
             # p_z_params = self.p_z_net(h)
@@ -571,6 +580,7 @@ class FutureDecoder(nn.Module):
             p_z_params_1 = self.p_z_net_param1(h)                         # [bs, nz]
             p_z_params_2 = self.p_z_net_param2(h)                         # [bs, nz]
             p_z_params = torch.cat([p_z_params_1, p_z_params_2], dim=-1)  # [bs, nz * 2]
+            # print("learned prior dim size: ", p_z_params_1.shape)
             if self.z_type == 'gaussian':
                 data[prior_key] = Normal(params=p_z_params)
             elif self.z_type == 'beta':
@@ -593,17 +603,18 @@ class FutureDecoder(nn.Module):
                 z = data['p_z_dist_infer'].sample()
 
                 if self.print_csv and self.learn_prior:
-                    alpha_np = (F.elu(p_z_params_1)+2.0).detach().cpu().numpy()
-                    beta_np  = (F.elu(p_z_params_2)+2.0).detach().cpu().numpy()
-                    with open("./test/z_data/"+self.this_run_info+"/a_prior/"+self.csv_newstamp, "a", newline="") as f:
-                        writer = csv.writer(f)
-                        writer.writerows(alpha_np)
+                    # alpha_np = (F.elu(p_z_params_1)+2.0).detach().cpu().numpy()
+                    # beta_np  = (F.elu(p_z_params_2)+2.0).detach().cpu().numpy()
+                    # with open("./test/z_data/"+self.this_run_info+"/a_prior/"+self.csv_newstamp, "a", newline="") as f:
+                    #     writer = csv.writer(f)
+                    #     writer.writerows(alpha_np)
                     
-                    with open("./test/z_data/"+self.this_run_info+"/b_prior/"+self.csv_newstamp, "a", newline="") as f:
-                        writer = csv.writer(f)
-                        writer.writerows(beta_np)  
+                    # with open("./test/z_data/"+self.this_run_info+"/b_prior/"+self.csv_newstamp, "a", newline="") as f:
+                    #     writer = csv.writer(f)
+                    #     writer.writerows(beta_np)  
+                    save_dir = "./test/z_data/"+self.this_run_info+"/z_prior/"+self.csv_newstamp; mkdir_if_missing(save_dir)
 
-                    with open("./test/z_data/"+self.this_run_info+"/z_prior/"+self.csv_newstamp, "a", newline="") as f:
+                    with open(save_dir, "a", newline="") as f:
                         writer = csv.writer(f)
                         writer.writerows(z.detach().cpu().numpy())  
             else:
@@ -619,7 +630,7 @@ class FutureDecoder(nn.Module):
                 # z[:,0:1][z[:,0:1]<threshold] = threshold      # ADE
                 if self.external_assign_z_at_test:
                     z[:,0:1] = self.user_z
-                    # z[:,1:2] = 0.9
+                    # z[:,1:2] = 0.5
                 else:
                     z[:,0:1] = 0.5
                 # z[:, 24:25]= 0.1    # FDE
@@ -654,11 +665,12 @@ class FutureDecoder(nn.Module):
                 z_sampled.append(random.choice(z_hc_set))
 
             z_twop = []
-            # z_twop.append(torch.rand_like(data['p_z_dist'].rsample()))
-            # z_twop.append(torch.rand_like(data['p_z_dist'].rsample()))
+            # We don't assume the prior is a fixed or leranable one. We just sample from a uniform dist.
+            z_twop.append(torch.rand_like(data['p_z_dist'].rsample()))
+            z_twop.append(torch.rand_like(data['p_z_dist'].rsample()))
             
-            z_twop.append(data['p_z_dist'].rsample())   # prior makes more sense?
-            z_twop.append(data['p_z_dist'].rsample())   # prior makes more sense?
+            # z_twop.append(data['p_z_dist'].rsample())   # prior makes more sense?
+            # z_twop.append(data['p_z_dist'].rsample())   # prior makes more sense?
 
             # print(z_twop[0].shape)
             # print(z_twop[0])
@@ -868,16 +880,18 @@ class AgentFormer(nn.Module):
             self.inference(sample_num=self.loss_cfg['sample']['k'])
         return self.data
 
-    def inference(self, mode='infer', sample_num=20, need_weights=False):
+    def inference(self, mode='infer', sample_num=20, need_weights=False, rerecon=-1):
         if self.use_map and self.data['map_enc'] is None:
             self.data['map_enc'] = self.map_encoder(self.data['agent_maps'])
         if self.data['context_enc'] is None:
             self.context_encoder(self.data)
+
         if mode == 'recon':
             sample_num = 1
-            self.future_encoder(self.data)
-        self.future_decoder(self.data, mode=mode, sample_num=sample_num, autoregress=True, need_weights=need_weights)
-        return self.data[f'{mode}_dec_motion'], self.data
+            self.future_encoder(self.data, rerecon=rerecon)
+        if rerecon < 0:
+            self.future_decoder(self.data, mode=mode, sample_num=sample_num, autoregress=True, need_weights=need_weights)
+            return self.data[f'{mode}_dec_motion'], self.data
 
     def compute_original_loss(self):
         total_loss = 0

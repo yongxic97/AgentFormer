@@ -84,7 +84,7 @@ if __name__ == '__main__':
     results_dir = args.results_dir
     user_z = args.user_z
     epochs = args.epochs
-    this_run_info = f"0612_0101_take1"
+    this_run_info = f"0612_0102_take1"
     save_metrics_file = f'test/all_avgvel_ade_fde/{this_run_info}/{epochs}.csv'
     
     if dataset == 'nuscenes_pred':   # nuscenes

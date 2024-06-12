@@ -4,6 +4,7 @@ import os
 import sys
 import subprocess
 import shutil
+import copy
 
 sys.path.append(os.getcwd())
 from data.dataloader import data_generator
@@ -19,6 +20,10 @@ def get_model_prediction(data, sample_k):
     sample_motion_3D, data = model.inference(mode='infer', sample_num=sample_k, need_weights=False)
     sample_motion_3D = sample_motion_3D.transpose(0, 1).contiguous()
     return recon_motion_3D, sample_motion_3D
+
+def get_model_prediction_with_recon_pred(recon_data, rerecon=-1):
+    model.set_data(recon_data)
+    model.inference(mode='recon', sample_num=1, rerecon=rerecon)
 
 def save_history(pre, data, save_dir):
     pre_num = 0
@@ -85,6 +90,7 @@ def test_model(generator, save_dir, cfg):
     total_num_pred = 0
     while not generator.is_epoch_end():
         data = generator()
+        data_rerecon = copy.deepcopy(data)
         if data is None:
             continue
         seq_name, frame = data['seq'], data['frame']
@@ -97,6 +103,15 @@ def test_model(generator, save_dir, cfg):
         # print("cfg.sample_k: ", cfg.sample_k)
         with torch.no_grad():
             recon_motion_3D, sample_motion_3D = get_model_prediction(data, cfg.sample_k)
+            # change ground truth of data to the reconstructed data
+            # data['fut_motion_3D'] = [recon_motion_3D[i] for i in range(recon_motion_3D.shape[0])]
+            # print(recon_motion_3D.shape)
+            # data_rerecon['fut_motion_3D'] = recon_motion_3D
+            data_rerecon['fut_motion_3D'] = tuple(sample_motion_3D[i,0,:] for i in range(recon_motion_3D.shape[0]))
+            # print(data_rerecon.keys())
+            # data['fut_motion_3D'] = recon_motion_3D
+            # predict again, but only the latent is desired
+            get_model_prediction_with_recon_pred(data_rerecon, rerecon=cfg.user_z)
         recon_motion_3D, sample_motion_3D = recon_motion_3D * cfg.traj_scale, sample_motion_3D * cfg.traj_scale
 
         """save samples"""
@@ -137,7 +152,7 @@ if __name__ == '__main__':
     cfg = Config(args.cfg)
     cfg.epochs = args.epochs
     cfg.user_z = args.user_z # the argument list feds to the AgentFormer class, and hard-code the z_0 there accordingly.
-    this_run_info = f"0612_0101_take1"
+    this_run_info = f"0612_0102_take1"
     cfg.model_dir = '%s/models_' % cfg.cfg_dir + this_run_info
     cfg.result_dir = '%s/results_%.1f_' % (cfg.cfg_dir, cfg.user_z) + this_run_info
     print(cfg.model_dir)
