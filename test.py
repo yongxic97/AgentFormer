@@ -103,13 +103,17 @@ def test_model(generator, save_dir, cfg):
         # print("cfg.sample_k: ", cfg.sample_k)
         with torch.no_grad():
             recon_motion_3D, sample_motion_3D = get_model_prediction(data, cfg.sample_k)
-            # change ground truth of data to the reconstructed data
-            # data['fut_motion_3D'] = [recon_motion_3D[i] for i in range(recon_motion_3D.shape[0])]
-            # print(recon_motion_3D.shape)
-            # data_rerecon['fut_motion_3D'] = recon_motion_3D
-            data_rerecon['fut_motion_3D'] = tuple(sample_motion_3D[i,0,:] for i in range(recon_motion_3D.shape[0]))
-            # print(data_rerecon.keys())
-            # data['fut_motion_3D'] = recon_motion_3D
+            # change ground truth of data to the first prediction with sampled z (I think recon use posterior z)
+
+            # recon_motion_3D: (num_agents, num_frames, 2)
+            # sample_motion_3D: (num_samples, num_agents, num_frames, 2)
+            # data_rerecon['fut_motion_3D']: [for each agent (i), num_frames x 2]
+            data_rerecon['fut_motion_3D'] = [sample_motion_3D[0,i,:,:] for i in range(recon_motion_3D.shape[0])]
+            # print(len(data['fut_motion_3D']))
+            # print(len(data_rerecon['fut_motion_3D']))
+            # print(data['fut_motion_3D'][0].shape)
+            # print(data_rerecon['fut_motion_3D'][0].shape)
+
             # predict again, but only the latent is desired
             get_model_prediction_with_recon_pred(data_rerecon, rerecon=cfg.user_z)
         recon_motion_3D, sample_motion_3D = recon_motion_3D * cfg.traj_scale, sample_motion_3D * cfg.traj_scale
@@ -152,8 +156,8 @@ if __name__ == '__main__':
     cfg = Config(args.cfg)
     cfg.epochs = args.epochs
     cfg.user_z = args.user_z # the argument list feds to the AgentFormer class, and hard-code the z_0 there accordingly.
-    this_run_info = f"0612_0102_take1"
-    cfg.model_dir = '%s/models_' % cfg.cfg_dir + this_run_info
+    this_run_info = f"0611_0101_take1"
+    cfg.model_dir = '%s/models_info' % cfg.cfg_dir + this_run_info
     cfg.result_dir = '%s/results_%.1f_' % (cfg.cfg_dir, cfg.user_z) + this_run_info
     print(cfg.model_dir)
     print(cfg.result_dir)
